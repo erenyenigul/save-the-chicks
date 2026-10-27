@@ -21,7 +21,7 @@
         "type": "string",
         "minLength": 3
       },
-      "description": "Top-down tile map, one string per row (row 0 is the north/top wall).\n  #  wall            .  floor           X  exit (on the outer wall; the street goes outside it)\n  P  player start    L  emergency stop: button on the adjacent wall (must be next to a wall)\n  H  hopper; a belt starts next to it and runs (> < ^ v) into a grinder G\n  S  sorter: splits the belt, males to a grinder G, females on to an egg farm F\n  B  large crate (blocks sight)          b  small crate (low, see-through)\n  M  machine         R  robot arm        c  traffic cone\nThe production line must be at least 12 walking steps from every exit."
+      "description": "Top-down tile map, one string per row (row 0 is the north/top wall).\n  #  wall            .  floor           X  exit (on the outer wall; the street goes outside it)\n  P  player start    L  emergency stop: button on the adjacent north, east or west wall\n  H  hopper; a belt starts next to it and runs (> < ^ v) into a grinder G\n  S  sorter: splits the belt, males to a grinder G, females on to an egg farm F\n  B  large crate (blocks sight)          b  small crate (low, see-through)\n  T  storage tank    R  robot arm        c  traffic cone\nThe production line must be at least 12 walking steps from every exit."
     },
     "guards": {
       "type": "array",

@@ -16,7 +16,7 @@ import { Chick, type EscapeRoute } from './Chick';
 import { ChickSpawner } from './ChickSpawner';
 import { Effects } from './Effects';
 import { EmergencyStop } from './EmergencyStop';
-import { ExitGlow } from './ExitGlow';
+import { ExitArrows } from './ExitArrows';
 import { Guard, separateGuards } from './Guard';
 import { GuardEmotes } from './GuardEmotes';
 import { Player } from './Player';
@@ -88,7 +88,7 @@ export class Game {
   private readonly alarm: Alarm;
   private readonly effects: Effects;
   private readonly stopStations: StopStations;
-  private readonly exitGlow: ExitGlow;
+  private readonly exitArrows: ExitArrows;
   private readonly emotes: GuardEmotes;
 
   private saved = 0;
@@ -137,8 +137,7 @@ export class Game {
 
     this.effects = new Effects();
     this.stopStations = new StopStations(this.scene.stopStations);
-    this.exitGlow = new ExitGlow(this.layout.exits);
-    this.root.add(this.exitGlow.root);
+    this.exitArrows = new ExitArrows(this.scene.exitMarkers, this.layout.exits, this.layout.grid);
     this.emotes = new GuardEmotes(assets, this.guards);
     this.root.add(this.effects.root, this.emotes.root);
 
@@ -168,15 +167,13 @@ export class Game {
 
   /**
    * Things the player can act on right now, for the renderer to outline:
-   * stop buttons while the emergency stop is ready, the chick within reach, and
-   * the exits while chicks are following.
+   * stop buttons while the emergency stop is ready, and the chick within reach.
    */
   highlights(): THREE.Object3D[] {
     if (this.pendingOutcome) return [];
     const highlighted = this.emergencyStop.isReady ? [...this.stopStations.buttons] : [];
     const chick = this.grabbableChick();
     if (chick) highlighted.push(chick.object);
-    if (this.followers.length > 0) highlighted.push(...this.scene.exitMarkers);
     return highlighted;
   }
 
@@ -243,7 +240,7 @@ export class Game {
     this.sound.stopLoop('hum');
     this.effects.dispose();
     this.stopStations.dispose();
-    this.exitGlow.dispose();
+    this.exitArrows.dispose();
     this.emotes.dispose();
     for (const chick of this.chicks) chick.dispose();
     for (const guard of this.guards) guard.dispose();
@@ -277,7 +274,7 @@ export class Game {
     this.sun.follow(this.player.position);
     this.mixHum();
     this.effects.update(dt);
-    this.exitGlow.update(dt, live && this.followers.length > 0);
+    this.exitArrows.update(dt, live && this.followers.length > 0);
 
     this.updateGuards(dt, live);
     this.returns.update(

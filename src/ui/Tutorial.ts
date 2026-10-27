@@ -19,7 +19,7 @@ export interface TutorialCues {
   dashReady: boolean;
 }
 
-const STORAGE_KEY = 'coop-breakout:lessons';
+const STORAGE_KEY = 'save-the-chicks:lessons';
 /** Screen distance from the player to the dash arrow, in CSS pixels. */
 const ARROW_OFFSET = 70;
 const GRAB_HINT_HEIGHT = 1.7;

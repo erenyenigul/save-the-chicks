@@ -54,14 +54,13 @@ export class ExitArrows {
     for (const tint of this.tints) tint.material.color.lerpColors(tint.base, ACTIVE_COLOR, this.strength);
 
     this.arrows.forEach((arrow, i) => {
-      // Each beat: a quick hop out over the first half, then rest.
-      const beat = (this.time * HOP_RATE - i * HOP_STAGGER) % 1;
-      const hop = beat < 0.5 ? Math.sin(beat * 2 * Math.PI * 0.5) : 0;
-      const lift = Math.sin(beat < 0.5 ? beat * 2 * Math.PI : 0);
+      // Each beat: a hop out and back over the first half, then a rest.
+      const beat = THREE.MathUtils.euclideanModulo(this.time * HOP_RATE - i * HOP_STAGGER, 1);
+      const hop = (beat < 0.5 ? Math.sin(beat * 2 * Math.PI) : 0) * this.strength;
       arrow.object.position
         .copy(arrow.rest)
-        .addScaledVector(arrow.outward, hop * HOP_REACH * this.strength)
-        .setY(arrow.rest.y + Math.max(lift, 0) * HOP_HEIGHT * this.strength);
+        .addScaledVector(arrow.outward, hop * HOP_REACH)
+        .setY(arrow.rest.y + hop * HOP_HEIGHT);
     });
   }
 

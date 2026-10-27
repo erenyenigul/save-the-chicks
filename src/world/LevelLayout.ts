@@ -57,7 +57,7 @@ const TILE_TRAITS: Record<string, TileTraits> = {
   S: { walkable: false, opaque: false },
   B: { walkable: false, opaque: true },
   b: { walkable: false, opaque: false },
-  M: { walkable: false, opaque: true },
+  T: { walkable: false, opaque: true },
   R: { walkable: false, opaque: true },
   '>': { walkable: false, opaque: false },
   '<': { walkable: false, opaque: false },

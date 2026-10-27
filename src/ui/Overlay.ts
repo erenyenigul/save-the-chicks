@@ -49,7 +49,7 @@ export class Overlay {
   }
 
   showMenu(levels: readonly LevelEntry[], suggested: number, onPlay: (index: number) => void): void {
-    this.title.textContent = 'Coop Breakout';
+    this.title.textContent = 'Save the Chicks';
     this.text.hidden = false;
     this.text.textContent = this.intro;
     this.controls.hidden = false;

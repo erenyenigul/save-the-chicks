@@ -16,7 +16,7 @@ interface SaveData {
   muted: boolean;
 }
 
-const STORAGE_KEY = 'coop-breakout:save';
+const STORAGE_KEY = 'save-the-chicks:save';
 
 const emptySave = (): SaveData => ({ version: 1, levels: {}, muted: false });
 
