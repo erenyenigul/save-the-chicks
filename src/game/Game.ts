@@ -129,7 +129,16 @@ export class Game {
     this.root.add(...this.sun.objects);
     this.lines.set(this.player, []);
 
-    this.guards = level.guards.map((route) => new Guard(assets, route, this.layout.grid));
+    const sight = level.rules.guardSight;
+    this.guards = level.guards.map(
+      (route) =>
+        new Guard(
+          assets,
+          route,
+          this.layout.grid,
+          sight && { range: sight.range, fieldOfView: THREE.MathUtils.degToRad(sight.fieldOfView) },
+        ),
+    );
     for (const guard of this.guards) {
       this.root.add(guard.object, guard.cone.mesh);
       this.lines.set(guard, []);

@@ -37,6 +37,13 @@ export const levelSchema = z.strictObject({
     spawnInterval: z
       .strictObject({ start: seconds, end: seconds })
       .describe('Seconds between drops at the start and at the end of the level.'),
+    guardSight: z
+      .strictObject({
+        range: z.number().positive().describe('How far guards see, in tiles.'),
+        fieldOfView: z.number().positive().max(360).describe('Width of the vision cone, in degrees.'),
+      })
+      .optional()
+      .describe('How well guards see on this level. Defaults to the values in tuning.ts.'),
   }),
 });
 

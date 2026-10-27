@@ -1,0 +1,26 @@
+{
+  "$schema": "./level.schema.json",
+  "id": "day-one",
+  "name": "Day One",
+  "map": [
+    "###############",
+    "#............H#",
+    "X............v#",
+    "X..P.........v#",
+    "X............v#",
+    "#............G#",
+    "###############"
+  ],
+  "guards": [
+    [[8, 1], [8, 5]]
+  ],
+  "rules": {
+    "parSeconds": 60,
+    "totalChicks": 4,
+    "chicksToSave": 2,
+    "maxLost": 3,
+    "beltSpeed": 0.35,
+    "spawnInterval": { "start": 5, "end": 4 },
+    "guardSight": { "range": 2.5, "fieldOfView": 50 }
+  }
+}

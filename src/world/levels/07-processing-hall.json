@@ -28,6 +28,7 @@
     "chicksToSave": 12,
     "maxLost": 10,
     "beltSpeed": 0.55,
-    "spawnInterval": { "start": 3.2, "end": 2 }
+    "spawnInterval": { "start": 3.2, "end": 2 },
+    "guardSight": { "range": 6, "fieldOfView": 80 }
   }
 }

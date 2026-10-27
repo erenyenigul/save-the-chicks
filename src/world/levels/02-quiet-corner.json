@@ -1,0 +1,28 @@
+{
+  "$schema": "./level.schema.json",
+  "id": "quiet-corner",
+  "name": "Quiet Corner",
+  "map": [
+    "##################",
+    "#c..............H#",
+    "#....B..........v#",
+    "X...............v#",
+    "X..P.....b......v#",
+    "X...............v#",
+    "#....B..........v#",
+    "#c..............G#",
+    "##################"
+  ],
+  "guards": [
+    [[11, 1], [11, 7]]
+  ],
+  "rules": {
+    "parSeconds": 70,
+    "totalChicks": 6,
+    "chicksToSave": 3,
+    "maxLost": 4,
+    "beltSpeed": 0.4,
+    "spawnInterval": { "start": 4.5, "end": 3.8 },
+    "guardSight": { "range": 3.5, "fieldOfView": 60 }
+  }
+}

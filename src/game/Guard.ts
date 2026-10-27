@@ -40,6 +40,12 @@ export interface GuardContext {
  */
 export type GuardEvent = 'spotted' | 'caught' | 'delivered';
 
+/** How far (tiles) and how wide (radians) a guard sees. */
+export interface GuardSight {
+  range: number;
+  fieldOfView: number;
+}
+
 /** What a guard's body language shows: curious (?), confused (searching), alarmed (!). */
 export type GuardMood = 'calm' | 'curious' | 'confused' | 'alarmed';
 
@@ -79,7 +85,15 @@ export class Guard {
   /** Direction the target was last seen moving in (zero if unknown). */
   private readonly lastHeading = new THREE.Vector3();
 
-  constructor(assets: Assets, route: readonly Cell[], grid: Grid) {
+  constructor(
+    assets: Assets,
+    route: readonly Cell[],
+    grid: Grid,
+    private readonly sight: GuardSight = {
+      range: TUNING.guard.viewDistance,
+      fieldOfView: TUNING.guard.fieldOfView,
+    },
+  ) {
     const { root, animations } = assets.instantiate('guard');
     this.object = root;
     this.object.scale.setScalar(TUNING.guard.scale);
@@ -88,7 +102,7 @@ export class Guard {
     this.trail.reset(this.object.position);
     this.animator = new Animator(root, animations);
     this.animator.play('idle');
-    this.cone = new VisionCone(TUNING.guard.viewDistance, TUNING.guard.fieldOfView);
+    this.cone = new VisionCone(sight.range, sight.fieldOfView);
   }
 
   get position(): THREE.Vector3 {
@@ -370,7 +384,7 @@ export class Guard {
   private updateSuspicion(dt: number, stimulus: Stimulus): void {
     const { guard } = TUNING;
     if (stimulus) {
-      const closeness = 1 - distanceXZ(this.position, this.lastSeen) / guard.viewDistance;
+      const closeness = 1 - distanceXZ(this.position, this.lastSeen) / this.sight.range;
       const weight = STIMULUS_WEIGHT[stimulus];
       this.suspicion += guard.suspicionGain * weight * (0.5 + Math.max(closeness, 0) * 1.5) * dt;
     } else {
@@ -442,15 +456,14 @@ export class Guard {
   }
 
   private canSee(target: THREE.Vector3, grid: Grid): boolean {
-    const { guard } = TUNING;
     const dx = target.x - this.position.x;
     const dz = target.z - this.position.z;
     const distance = Math.hypot(dx, dz);
-    if (distance > guard.viewDistance) return false;
+    if (distance > this.sight.range) return false;
     if (distance > 0.5) {
       const offset = yawFromDirection(dx, dz) - this.object.rotation.y;
       const angle = Math.atan2(Math.sin(offset), Math.cos(offset));
-      if (Math.abs(angle) > guard.fieldOfView / 2) return false;
+      if (Math.abs(angle) > this.sight.fieldOfView / 2) return false;
     }
     return grid.hasLineOfSight(this.position, target);
   }
