@@ -7,16 +7,25 @@ import './ui/style.css';
 import * as THREE from 'three/webgpu';
 import { Assets } from './core/Assets';
 import { Input } from './core/Input';
+import { OutlinePipeline } from './core/OutlinePipeline';
 import { SoundBoard } from './core/SoundBoard';
 import { CameraRig } from './game/CameraRig';
-import { Game, type GameOutcome } from './game/Game';
+import { Game, type GameOutcome, type GameSignal } from './game/Game';
 import { Progress } from './game/Progress';
 import { scoreLevel } from './game/scoring';
 import { element } from './ui/dom';
 import { Hud } from './ui/Hud';
 import { Overlay, type OverlayAction } from './ui/Overlay';
-import { Tutorial } from './ui/Tutorial';
-import { LEVELS } from './world/levels';
+import { Tutorial, type Lesson } from './ui/Tutorial';
+import { Wipe } from './ui/Wipe';
+import { loadLevels, type LevelDefinition } from './world/levels';
+
+/** Which tutorial lessons each game signal completes. */
+const SIGNAL_LESSONS: Record<GameSignal, Lesson[]> = {
+  dashed: ['dash'],
+  dashedWhileChased: ['dash', 'escape'],
+  grabbed: ['grab'],
+};
 
 /** Longest step the simulation takes; protects against tab-switch spikes. */
 const MAX_FRAME_TIME = 1 / 20;
@@ -25,6 +34,8 @@ class App {
   private readonly renderer = new THREE.WebGPURenderer({ antialias: true });
   private readonly scene = new THREE.Scene();
   private readonly rig = new CameraRig(window.innerWidth / window.innerHeight);
+  /** Outlines interactive things (ready levers, the chick in reach) in one cartoon colour. */
+  private readonly outlines = new OutlinePipeline(this.renderer, this.scene, this.rig.camera, 0x4fe07a);
   private readonly timer = new THREE.Timer();
   private readonly input = new Input();
   private readonly assets = new Assets();
@@ -32,12 +43,17 @@ class App {
   private readonly hud = new Hud();
   private readonly tutorial = new Tutorial();
   private readonly overlay = new Overlay(() => this.sound.play('click'));
+  private readonly wipe = new Wipe();
+  /** A swipe is running; gameplay is frozen and further transitions are ignored. */
+  private transitioning = false;
   private readonly progress = Progress.load();
   private game: Game | null = null;
+  private levels: readonly LevelDefinition[] = [];
   private levelIndex = 0;
   private backendLabel = '';
 
   async start(container: HTMLElement): Promise<void> {
+    this.levels = loadLevels();
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.shadowMap.enabled = true;
@@ -52,6 +68,7 @@ class App {
     this.updateFooter();
 
     this.setUpStage();
+    this.rig.snapTo(new THREE.Vector3());
     window.addEventListener('resize', this.onResize);
     this.timer.connect(document);
 
@@ -62,36 +79,54 @@ class App {
 
   private showMenu(): void {
     this.hud.setVisible(false);
-    const entries = LEVELS.map((level, index) => ({
+    const entries = this.levels.map((level, index) => ({
       name: level.name,
-      unlocked: this.progress.isUnlocked(LEVELS, index),
+      unlocked: this.progress.isUnlocked(this.levels, index),
       record: this.progress.record(level),
     }));
-    this.overlay.showMenu(entries, this.progress.nextLevelIndex(LEVELS), (index) => this.startLevel(index));
+    this.overlay.showMenu(entries, this.progress.nextLevelIndex(this.levels), (index) => this.play(index));
+  }
+
+  /** Swipe the screen closed, apply `change` underneath, then swipe it open. */
+  private async transition(change: () => void): Promise<void> {
+    if (this.transitioning) return;
+    this.transitioning = true;
+    await this.wipe.cover();
+    change();
+    await this.wipe.reveal();
+    this.transitioning = false;
+  }
+
+  private play(index: number): void {
+    void this.transition(() => {
+      this.overlay.hide();
+      this.startLevel(index);
+    });
   }
 
   private setUpStage(): void {
-    const background = new THREE.Color(0x1b1730);
+    const background = new THREE.Color(0x86a8a6);
     this.scene.background = background;
     this.scene.fog = new THREE.Fog(background, 24, 48);
 
     const ground = new THREE.Mesh(
       new THREE.PlaneGeometry(200, 200),
-      new THREE.MeshStandardMaterial({ color: 0x2a2444, roughness: 1 }),
+      new THREE.MeshStandardMaterial({ color: 0x77a066, roughness: 1 }),
     );
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.01;
     ground.receiveShadow = true;
-    this.scene.add(ground);
+    // Ambient sky light lives with the stage so menus have a lit backdrop; levels add the sun.
+    this.scene.add(ground, new THREE.HemisphereLight(0xfff2e2, 0x6d8a70, 1.3));
   }
 
   private startLevel(index: number): void {
     this.game?.dispose();
     this.levelIndex = index;
-    const level = LEVELS[index];
+    const level = this.levels[index];
     const label = `Level ${index + 1} · ${level.name}`;
     this.game = new Game(level, label, this.assets, this.sound, (signal) =>
-      this.tutorial.complete(signal === 'dashed' ? 'dash' : 'grab'),
+      SIGNAL_LESSONS[signal].forEach((lesson) => this.tutorial.complete(lesson)),
     );
     this.scene.add(this.game.root);
     this.rig.snapTo(this.game.focus);
@@ -103,10 +138,9 @@ class App {
   }
 
   private endLevel(outcome: GameOutcome): void {
-    this.hud.setVisible(false);
-    this.sound.play(outcome.won ? 'win' : 'lose');
+    if (outcome.won) this.sound.play('win');
 
-    const level = LEVELS[this.levelIndex];
+    const level = this.levels[this.levelIndex];
     const score = scoreLevel(outcome.stats, level.rules, outcome.won);
     const { newBest, previousBest } = this.progress.addAttempt(level, {
       won: outcome.won,
@@ -116,15 +150,19 @@ class App {
       seconds: outcome.stats.seconds,
     });
 
-    const hasNext = this.levelIndex + 1 < LEVELS.length;
-    const retry: OverlayAction = { label: 'Try again', onClick: () => this.startLevel(this.levelIndex) };
-    const menu: OverlayAction = { label: 'Levels', onClick: () => this.showMenu(), secondary: true };
-    let title = 'Shift over';
+    const hasNext = this.levelIndex + 1 < this.levels.length;
+    const retry: OverlayAction = { label: 'Try again', onClick: () => this.play(this.levelIndex) };
+    const menu: OverlayAction = {
+      label: 'Levels',
+      onClick: () => void this.transition(() => this.showMenu()),
+      secondary: true,
+    };
+    let title = 'Busted!';
     let actions: OverlayAction[] = [retry, menu];
     if (outcome.won && hasNext) {
       title = 'They’re free!';
       actions = [
-        { label: 'Next level', onClick: () => this.startLevel(this.levelIndex + 1) },
+        { label: 'Next level', onClick: () => this.play(this.levelIndex + 1) },
         { ...retry, label: 'Replay', secondary: true },
         menu,
       ];
@@ -133,10 +171,11 @@ class App {
       actions = [{ ...retry, label: 'Replay' }, menu];
     }
 
-    this.overlay.showResult(
-      { title, reason: outcome.reason, won: outcome.won, score, stats: outcome.stats, newBest, previousBest },
-      actions,
-    );
+    const result = { title, reason: outcome.reason, won: outcome.won, score, stats: outcome.stats, newBest, previousBest };
+    void this.transition(() => {
+      this.hud.setVisible(false);
+      this.overlay.showResult(result, actions);
+    });
   }
 
   private updateFooter(): void {
@@ -153,7 +192,7 @@ class App {
       this.updateFooter();
     }
 
-    const playing = this.game !== null && this.overlay.hidden;
+    const playing = this.game !== null && this.overlay.hidden && !this.transitioning;
     if (this.game && playing) {
       const outcome = this.game.update(dt, this.input);
       this.hud.update(this.game.hudState());
@@ -164,12 +203,19 @@ class App {
     this.tutorial.update(
       this.rig.camera,
       this.game && this.overlay.hidden
-        ? { player: this.game.focus, facing: this.game.playerFacing, grabbable: this.game.grabbableChickPosition }
+        ? {
+            player: this.game.focus,
+            facing: this.game.playerFacing,
+            grabbable: this.game.grabbableChickPosition,
+            chased: this.game.isChased,
+            dashReady: this.game.dashReady,
+          }
         : null,
     );
 
     this.input.endFrame();
-    this.renderer.render(this.scene, this.rig.camera);
+    this.outlines.selected.splice(0, Infinity, ...(this.game && playing ? this.game.highlights() : []));
+    this.outlines.render(dt);
   };
 
   private readonly onResize = (): void => {

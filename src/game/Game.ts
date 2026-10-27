@@ -7,12 +7,20 @@ import type { HudState } from '../ui/Hud';
 import { cellKey } from '../world/Grid';
 import { buildLevelScene, type LevelScene } from '../world/LevelBuilder';
 import { outwardDirection, parseLevel, type LevelLayout } from '../world/LevelLayout';
+import { buildStreet, type StreetScene } from '../world/Street';
 import type { LevelDefinition } from '../world/levels';
-import { buildBeltLines, nearestBeltSpot, type BeltLine, type MachineMotion } from './Belt';
 import { Alarm } from './Alarm';
-import { Chick } from './Chick';
+import { buildBeltLines, nearestBeltSpot, type BeltLine, type MachineMotion } from './Belt';
+import { BeltReturns } from './BeltReturns';
+import { Chick, type EscapeRoute } from './Chick';
+import { ChickSpawner } from './ChickSpawner';
+import { Effects } from './Effects';
+import { EmergencyStop } from './EmergencyStop';
 import { Guard, separateGuards } from './Guard';
+import { GuardEmotes } from './GuardEmotes';
 import { Player } from './Player';
+import { StopStations } from './StopStations';
+import { Sun } from './Sun';
 import type { Trail } from './Trail';
 import { TUNING } from './tuning';
 
@@ -37,7 +45,7 @@ export interface GameOutcome {
 }
 
 /** Moments the tutorial cares about. */
-export type GameSignal = 'dashed' | 'grabbed';
+export type GameSignal = 'dashed' | 'dashedWhileChased' | 'grabbed';
 
 /** Anything chicks can follow in a line: the player, or a guard who grabbed them. */
 interface Leader {
@@ -47,23 +55,24 @@ interface Leader {
 
 /** Pause after the deciding moment so its animation can play before the result screen. */
 const OUTCOME_DELAY = 1.6;
-/** Returned chicks are never put closer than this to a grinder or farm intake. */
-const DROP_OFF_END_CLEARANCE = 2;
-/** Seconds between chicks when a guard puts several back on a belt. */
-const HANDOFF_INTERVAL = 0.8;
-/** A chick isn't put on a belt within this distance of one already riding there. */
-const HANDOFF_CLEARANCE = 0.6;
-/** A guard who wanders further than this from the drop-off abandons the handoff. */
-const HANDOFF_LEASH = 1;
+/** The factory hum is only audible within this distance of a belt. */
+const BELT_HEARING_DISTANCE = 6;
+/** Hum level while the emergency stop has the belts halted. */
+const STOPPED_HUM_LEVEL = 0.15;
 
-/** One play-through of a level: owns every entity and enforces the rules. */
+/**
+ * One play-through of a level. Owns the entities, wires the components
+ * (spawner, emergency stop, belt returns, alarm) together and enforces the rules.
+ */
 export class Game {
   readonly root = new THREE.Group();
 
   private readonly layout: LevelLayout;
   private readonly scene: LevelScene;
-  private readonly beltLines: BeltLine[];
+  private readonly street: StreetScene;
+  private readonly sun: Sun;
   private readonly machines: MachineMotion[];
+  private readonly beltLines: BeltLine[];
   private readonly player: Player;
   private readonly guards: Guard[];
   private readonly chicks: Chick[] = [];
@@ -72,9 +81,13 @@ export class Game {
   /** Exit cell key → outward direction. */
   private readonly exits = new Map<string, THREE.Vector3>();
 
+  private readonly spawner: ChickSpawner;
+  private readonly emergencyStop = new EmergencyStop();
+  private readonly returns: BeltReturns;
   private readonly alarm: Alarm;
-  /** Guards handing chicks back to a belt one at a time: where they stand and when the next goes. */
-  private readonly handoffs = new Map<Guard, { at: THREE.Vector3; timer: number }>();
+  private readonly effects: Effects;
+  private readonly stopStations: StopStations;
+  private readonly emotes: GuardEmotes;
 
   private saved = 0;
   private escapedAtEnd = 0;
@@ -82,10 +95,6 @@ export class Game {
   private taken = 0;
   private timesSpotted = 0;
   private elapsed = 0;
-  private spawned = 0;
-  private spawnTimer = 1;
-  private beltStopTimer = 0;
-  private leverCooldown = 0;
   private alarmed = false;
   private pendingOutcome: { outcome: GameOutcome; delay: number } | null = null;
 
@@ -98,12 +107,14 @@ export class Game {
   ) {
     this.layout = parseLevel(level);
     this.scene = buildLevelScene(this.layout, assets);
-    this.root.add(this.scene.root);
-    this.root.add(createLighting(this.layout));
+    this.street = buildStreet(this.layout, assets);
+    this.root.add(this.scene.root, this.street.root);
 
     const belts = buildBeltLines(this.layout.belts, this.scene.machines);
-    this.beltLines = belts.lines;
     this.machines = belts.machines;
+    this.beltLines = belts.lines;
+    this.spawner = new ChickSpawner(level.rules, belts.lines);
+    this.returns = new BeltReturns(belts.lines, this.layout.grid);
 
     for (const cell of this.layout.exits) {
       const out = outwardDirection(cell, this.layout.grid);
@@ -112,6 +123,8 @@ export class Game {
 
     this.player = new Player(assets, this.layout.grid.cellCenter(this.layout.playerStart));
     this.root.add(this.player.object);
+    this.sun = new Sun(this.player.position);
+    this.root.add(...this.sun.objects);
     this.lines.set(this.player, []);
 
     this.guards = level.guards.map((route) => new Guard(assets, route, this.layout.grid));
@@ -120,10 +133,15 @@ export class Game {
       this.lines.set(guard, []);
     }
 
+    this.effects = new Effects();
+    this.stopStations = new StopStations(this.scene.stopStations);
+    this.emotes = new GuardEmotes(assets, this.guards);
+    this.root.add(this.effects.root, this.emotes.root);
+
     this.alarm = new Alarm(sound);
     this.sound.setListener(this.player.position);
     this.sound.startLoop('hum');
-    this.sound.fadeLoop('hum', 1, 0.8);
+    this.mixHum();
     this.sound.play('levelStart');
   }
 
@@ -133,6 +151,26 @@ export class Game {
 
   get playerFacing(): number {
     return this.player.facing;
+  }
+
+  /** A guard is chasing the player right now. */
+  get isChased(): boolean {
+    return this.alarmed;
+  }
+
+  get dashReady(): boolean {
+    return this.player.dashCharge >= 1;
+  }
+
+  /**
+   * Things the player can act on right now, for the renderer to outline:
+   * stop buttons while the emergency stop is ready, and the chick within reach.
+   */
+  highlights(): THREE.Object3D[] {
+    if (this.pendingOutcome) return [];
+    const buttons = this.emergencyStop.isReady ? this.stopStations.buttons : [];
+    const chick = this.grabbableChick();
+    return chick ? [...buttons, chick.object] : buttons;
   }
 
   /** A chick on a belt within the player's reach, if any. */
@@ -154,6 +192,11 @@ export class Game {
     return this.losses.ground + this.losses.caged;
   }
 
+  /** Chicks not yet dropped plus those still on a belt. */
+  private get onLine(): number {
+    return this.spawner.remaining + this.chicks.filter((chick) => chick.isOnLine).length;
+  }
+
   update(dt: number, input: Input): GameOutcome | null {
     if (this.pendingOutcome) {
       this.pendingOutcome.delay -= dt;
@@ -164,7 +207,7 @@ export class Game {
     this.elapsed += dt;
     this.updateWorld(dt, input, true);
     if (input.wasPressed('interact')) this.interact();
-    this.spawnChicks(dt);
+    this.dropChick(dt);
     this.checkRules();
     return null;
   }
@@ -179,10 +222,11 @@ export class Game {
       maxLost: rules.maxLost,
       following: this.followers.length,
       captured: this.captured,
-      remaining: this.chicksOnLine(),
-      leverCharge: this.leverCharge(),
+      remaining: this.onLine,
+      stopCharge: this.emergencyStop.charge,
+      stopSeconds: this.emergencyStop.secondsLeft,
       dashCharge: this.player.dashCharge,
-      beltsStopped: this.beltStopTimer > 0,
+      beltsStopped: !this.emergencyStop.beltsRunning,
       alert: this.alarmed,
       prompt: this.pendingOutcome ? null : this.interactionPrompt(),
     };
@@ -190,63 +234,81 @@ export class Game {
 
   dispose(): void {
     this.sound.stopLoop('hum');
+    this.effects.dispose();
+    this.stopStations.dispose();
+    this.emotes.dispose();
     for (const chick of this.chicks) chick.dispose();
     for (const guard of this.guards) guard.dispose();
     this.player.dispose();
     this.scene.dispose();
-    this.root.traverse((object) => {
-      if ((object as THREE.Light).isLight) (object as THREE.Light).dispose();
-    });
+    this.street.dispose();
+    this.sun.dispose();
     this.root.removeFromParent();
   }
 
   private updateWorld(dt: number, input: Input, live: boolean): void {
-    const wasRunning = this.beltStopTimer === 0;
-    this.beltStopTimer = Math.max(0, this.beltStopTimer - dt);
-    this.leverCooldown = Math.max(0, this.leverCooldown - dt);
-    const beltsRunning = this.beltStopTimer === 0;
-    if (beltsRunning && !wasRunning) this.sound.fadeLoop('hum', 1);
+    this.emergencyStop.update(dt);
+    this.stopStations.update(dt, this.emergencyStop);
+    const beltsRunning = this.emergencyStop.beltsRunning;
     for (const machine of this.machines) machine.update(dt, beltsRunning);
+    this.street.update(
+      dt,
+      this.chicks.filter((chick) => chick.isEscaping).map((chick) => chick.position),
+    );
 
     const intent = live ? { axis: input.moveAxis(), dash: input.wasPressed('dash') } : null;
     const playerEvent = this.player.update(dt, intent, this.layout.grid);
     if (playerEvent === 'dash') {
       this.sound.play('dash');
-      this.onSignal('dashed');
+      this.effects.dash(this.player.position, this.player.dashHeading);
+      this.onSignal(this.alarmed ? 'dashedWhileChased' : 'dashed');
     } else if (playerEvent === 'step') {
       this.sound.play('step');
     }
     this.sound.setListener(this.player.position);
+    this.sun.follow(this.player.position);
+    this.mixHum();
+    this.effects.update(dt);
 
     this.updateGuards(dt, live);
-    this.updateHandoffs(dt);
+    this.returns.update(
+      dt,
+      this.chicks,
+      (guard) => this.lines.get(guard)!,
+      (guard) => this.sound.play('putBack', guard.position),
+    );
     this.updateChicks(dt, beltsRunning, live);
     this.alarm.update(dt, live && this.alarmed);
   }
 
   private updateGuards(dt: number, live: boolean): void {
-    const base = {
+    const shared = {
       grid: this.layout.grid,
       playerPosition: this.player.position,
       playerNoisy: this.player.isNoisy,
       looseChicks: this.followers.filter((chick) => chick.isFollowing).map((chick) => chick.position),
-      findDropOff: (from: THREE.Vector3) => this.findDropOff(from),
     };
     for (const guard of this.guards) {
-      const event = guard.update(dt, { ...base, carrying: this.lines.get(guard)!.length > 0 });
+      const event = guard.update(dt, {
+        ...shared,
+        carrying: this.lines.get(guard)!.length > 0,
+        findDropOff: (from) => this.returns.reserve(guard, from),
+      });
       if (event === 'spotted') {
         this.sound.play('spotted', guard.position);
         if (live) this.timesSpotted++;
       }
-      if (event === 'delivered') this.startHandoff(guard);
+      if (event === 'delivered') this.returns.begin(guard);
       if (event === 'caught' && live) {
         this.player.surrender();
+        for (const other of this.guards) other.halt(this.player.position);
         guard.gloat(this.player.position);
         this.finish(false, 'A guard caught you.');
       }
       if (live) this.captureFollowersNear(guard);
     }
     separateGuards(this.guards, this.layout.grid);
+    this.emotes.update(dt);
     this.alarmed = this.guards.some((guard) => guard.isChasing);
   }
 
@@ -261,61 +323,6 @@ export class Game {
       captured.push(chick);
       this.taken++;
       this.sound.play('captured', chick.position);
-    }
-  }
-
-  /** Walkable tile next to the belt nearest `from`, closest to `from`. */
-  private findDropOff(from: THREE.Vector3): THREE.Vector3 | null {
-    const spot = nearestBeltSpot(this.beltLines, from, DROP_OFF_END_CLEARANCE);
-    if (!spot) return null;
-    const { grid } = this.layout;
-    const beltCell = grid.cellAt(spot.point);
-    let best: THREE.Vector3 | null = null;
-    for (const [dc, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const cell = { col: beltCell.col + dc, row: beltCell.row + dr };
-      if (!grid.isWalkable(cell.col, cell.row)) continue;
-      const center = grid.cellCenter(cell);
-      if (!best || distanceXZ(center, from) < distanceXZ(best, from)) best = center;
-    }
-    return best;
-  }
-
-  /** A guard arrived at a drop-off: they stand there and hand chicks back one by one. */
-  private startHandoff(guard: Guard): void {
-    const held = this.lines.get(guard)!;
-    const spot = nearestBeltSpot(this.beltLines, guard.position, DROP_OFF_END_CLEARANCE);
-    if (!spot || held.length === 0) return;
-    guard.hold(HANDOFF_INTERVAL + 0.5, spot.point);
-    this.handoffs.set(guard, { at: guard.position.clone(), timer: 0.3 });
-  }
-
-  private updateHandoffs(dt: number): void {
-    for (const [guard, handoff] of this.handoffs) {
-      const held = this.lines.get(guard)!;
-      // Distracted (spotted the player, say): the rest stay with them and get delivered later.
-      if (held.length === 0 || distanceXZ(guard.position, handoff.at) > HANDOFF_LEASH) {
-        this.handoffs.delete(guard);
-        continue;
-      }
-
-      const spot = nearestBeltSpot(this.beltLines, guard.position, DROP_OFF_END_CLEARANCE);
-      if (!spot) {
-        this.handoffs.delete(guard);
-        continue;
-      }
-      // Keep the guard standing there until the last chick is back on (unless something else got their attention).
-      if (guard.isHandingOff) guard.hold(HANDOFF_INTERVAL + 0.5, spot.point);
-
-      handoff.timer -= dt;
-      if (handoff.timer > 0) continue;
-      if (this.chicks.some((chick) => chick.isNearOnBelt(spot.path, spot.distance, HANDOFF_CLEARANCE))) {
-        handoff.timer = 0.1; // Wait for the previous chick to ride clear.
-        continue;
-      }
-
-      held.shift()!.putBack(spot);
-      this.sound.play('putBack', guard.position);
-      handoff.timer = HANDOFF_INTERVAL;
     }
   }
 
@@ -363,7 +370,7 @@ export class Game {
     const outward = this.exits.get(cellKey(this.layout.grid.cellAt(chick.position)));
     if (!outward) return;
 
-    chick.escape(outward);
+    chick.escape(escapeRoute(outward));
     this.followers.splice(slot, 1);
     this.saved++;
     this.sound.play('saved');
@@ -383,30 +390,35 @@ export class Game {
       return;
     }
 
-    const lever = this.nearbyLever();
-    if (lever && this.leverCooldown === 0 && this.beltStopTimer === 0) {
-      this.player.interactWith(lever.position);
-      lever.rotation.y += Math.PI;
-      this.beltStopTimer = TUNING.lever.stopDuration;
-      this.leverCooldown = TUNING.lever.cooldown;
-      this.sound.play('lever');
+    const button = this.nearbyStopButton();
+    if (button && this.emergencyStop.press()) {
+      this.player.interactWith(button.position);
+      this.stopStations.press(button);
+      this.sound.play('stopButton');
       this.sound.play('beltsStop');
-      this.sound.fadeLoop('hum', 0.15);
     }
   }
 
-  /** Belt stop time left while active, otherwise recharge progress. */
-  private leverCharge(): number {
-    const { stopDuration, cooldown } = TUNING.lever;
-    if (this.beltStopTimer > 0) return this.beltStopTimer / stopDuration;
-    return 1 - this.leverCooldown / cooldown;
+  /**
+   * The factory hum comes from the belts: it fades in near one, pans towards it,
+   * drops low while the emergency stop is on, and dies away once the level is decided.
+   */
+  private mixHum(): void {
+    const spot = nearestBeltSpot(this.beltLines, this.player.position, { endClearance: 0 });
+    if (!spot || this.pendingOutcome) {
+      this.sound.mixLoop('hum', 0);
+      return;
+    }
+    const closeness = 1 - Math.min(distanceXZ(spot.point, this.player.position) / BELT_HEARING_DISTANCE, 1);
+    const running = this.emergencyStop.beltsRunning ? 1 : STOPPED_HUM_LEVEL;
+    this.sound.mixLoop('hum', closeness ** 1.5 * running, (spot.point.x - this.player.position.x) / BELT_HEARING_DISTANCE);
   }
 
   private interactionPrompt(): string | null {
     if (this.grabbableChick()) return 'Space — grab the chick';
-    if (!this.nearbyLever()) return null;
-    if (this.beltStopTimer > 0) return 'Belts stopped!';
-    return this.leverCooldown > 0 ? 'Emergency stop is recharging…' : 'Space — pull the emergency stop';
+    if (!this.nearbyStopButton()) return null;
+    if (!this.emergencyStop.beltsRunning) return 'Belts stopped!';
+    return this.emergencyStop.isReady ? 'Space — press the emergency stop' : 'Emergency stop is recharging…';
   }
 
   private grabbableChick(): Chick | null {
@@ -423,38 +435,18 @@ export class Game {
     return best;
   }
 
-  private nearbyLever(): THREE.Object3D | null {
-    return (
-      this.scene.levers.find((lever) => distanceXZ(lever.position, this.player.position) < TUNING.player.leverRange) ??
-      null
-    );
+  private nearbyStopButton(): THREE.Object3D | null {
+    const range = TUNING.player.buttonRange;
+    return this.stopStations.buttons.find((button) => distanceXZ(button.position, this.player.position) < range) ?? null;
   }
 
-  private spawnChicks(dt: number): void {
-    const { totalChicks, spawnInterval } = this.level.rules;
-    if (this.spawned >= totalChicks || this.beltStopTimer > 0) return;
-
-    this.spawnTimer -= dt;
-    if (this.spawnTimer > 0) return;
-
-    const free = this.beltLines.filter((line) => this.chicks.every((chick) => !chick.blocksHopper(line)));
-    if (free.length === 0) return;
-
-    const line = free[Math.floor(Math.random() * free.length)];
+  private dropChick(dt: number): void {
+    const line = this.spawner.update(dt, this.chicks);
+    if (!line) return;
     const chick = new Chick(this.assets, line, Math.random() < 0.5 ? 'male' : 'female');
     this.chicks.push(chick);
     this.root.add(chick.object);
-    this.spawned++;
     this.sound.play('chirp', line.hopperMouth);
-
-    const progress = this.spawned / totalChicks;
-    this.spawnTimer = THREE.MathUtils.lerp(spawnInterval.start, spawnInterval.end, progress);
-  }
-
-  /** Chicks not yet dropped plus those still on a belt. */
-  private chicksOnLine(): number {
-    const onBelts = this.chicks.filter((chick) => chick.isOnLine).length;
-    return this.level.rules.totalChicks - this.spawned + onBelts;
   }
 
   private checkRules(): void {
@@ -463,7 +455,7 @@ export class Game {
       this.win();
     } else if (this.lost >= maxLost) {
       this.finish(false, this.lossSummary());
-    } else if (this.saved + this.followers.length + this.captured + this.chicksOnLine() < chicksToSave) {
+    } else if (this.saved + this.followers.length + this.captured + this.onLine < chicksToSave) {
       this.finish(false, `Not enough chicks left to save. ${this.lossSummary()}`);
     }
   }
@@ -485,7 +477,7 @@ export class Game {
     for (const chick of this.followers) {
       const exit = this.nearestExit(chick.position);
       const path = this.layout.grid.findPath(chick.position, exit.cell);
-      chick.fleeTo(path, exit.outward);
+      chick.fleeTo(path, escapeRoute(exit.outward));
       longestRun = Math.max(longestRun, pathLength(chick.position, path));
     }
     this.escapedAtEnd = this.followers.length;
@@ -524,8 +516,13 @@ export class Game {
       seconds: this.elapsed,
     };
     this.pendingOutcome = { outcome: { won, reason, stats }, delay: OUTCOME_DELAY };
-    this.sound.fadeLoop('hum', 0, OUTCOME_DELAY);
   }
+}
+
+/** Out through the exit, then left or right down the sidewalk at random. */
+function escapeRoute(outward: THREE.Vector3): EscapeRoute {
+  const side = Math.random() < 0.5 ? 1 : -1;
+  return { outward, along: new THREE.Vector3(-outward.z * side, 0, outward.x * side) };
 }
 
 function pathLength(from: THREE.Vector3, path: readonly THREE.Vector3[]): number {
@@ -536,25 +533,4 @@ function pathLength(from: THREE.Vector3, path: readonly THREE.Vector3[]): number
     previous = point;
   }
   return length;
-}
-
-function createLighting(layout: LevelLayout): THREE.Group {
-  const { width, height } = layout.grid;
-  const group = new THREE.Group();
-  group.add(new THREE.HemisphereLight(0xd9dcff, 0x3b2f55, 1.6));
-
-  const sun = new THREE.DirectionalLight(0xfff1dd, 2.4);
-  const center = new THREE.Vector3((width - 1) / 2, 0, (height - 1) / 2);
-  sun.position.copy(center).add(new THREE.Vector3(-8, 18, 10));
-  sun.target.position.copy(center);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.bias = -0.0005;
-  sun.shadow.normalBias = 0.03;
-  const extent = Math.max(width, height) * 0.65;
-  Object.assign(sun.shadow.camera, { left: -extent, right: extent, top: extent, bottom: -extent, near: 1, far: 60 });
-  sun.shadow.camera.updateProjectionMatrix();
-
-  group.add(sun, sun.target);
-  return group;
 }

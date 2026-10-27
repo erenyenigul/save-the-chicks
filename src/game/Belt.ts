@@ -127,22 +127,30 @@ export interface BeltSpot {
   point: THREE.Vector3;
 }
 
-/** Spot on any belt closest to `position`, keeping `endClearance` away from machine intakes. */
+/** Candidate offsets (along the belt) tried around the closest point, so a rejected spot has alternatives. */
+const SPOT_SEARCH_OFFSETS = [0, -1, 1, -2, 2, -3, 3];
+
+/**
+ * Spot on any belt closest to `position`, at least `endClearance` from machine intakes,
+ * and passing `accept` (used to keep different guards' spots apart).
+ */
 export function nearestBeltSpot(
   lines: readonly BeltLine[],
   position: THREE.Vector3,
-  endClearance: number,
+  options: { endClearance: number; accept?: (point: THREE.Vector3) => boolean },
 ): BeltSpot | null {
   let best: BeltSpot | null = null;
   let bestDistance = Infinity;
   for (const line of lines) {
     for (const path of line.root.walk()) {
-      const usable = path.length - (path.end.kind === 'sorter' ? 0 : endClearance);
+      const usable = path.length - (path.end.kind === 'sorter' ? 0 : options.endClearance);
       if (usable <= 0) continue;
-      const distance = Math.min(path.closestDistance(position), usable);
-      const point = path.pointAt(distance, new THREE.Vector3());
-      const away = Math.hypot(point.x - position.x, point.z - position.z);
-      if (away < bestDistance) {
+      const closest = path.closestDistance(position);
+      for (const offset of SPOT_SEARCH_OFFSETS) {
+        const distance = THREE.MathUtils.clamp(closest + offset, 0, usable);
+        const point = path.pointAt(distance, new THREE.Vector3());
+        const away = Math.hypot(point.x - position.x, point.z - position.z);
+        if (away >= bestDistance || (options.accept && !options.accept(point))) continue;
         bestDistance = away;
         best = { path, distance, point };
       }

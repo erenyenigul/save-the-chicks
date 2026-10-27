@@ -49,6 +49,11 @@ export class Player {
     return this.object.position;
   }
 
+  /** Direction of the current (or most recent) dash. */
+  get dashHeading(): THREE.Vector3 {
+    return this.dashDirection;
+  }
+
   get facing(): number {
     return this.object.rotation.y;
   }

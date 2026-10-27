@@ -28,13 +28,12 @@ const SOUNDS = {
   heartbeat: { files: range('impactSoft_heavy_', 0, 1), volume: 0.5, pitchJitter: 0.04 },
   captured: { files: range('error_', 1, 3), volume: 0.5 },
   putBack: { files: ['ui-switch-a'], volume: 0.6 },
-  lever: { files: range('switch_', 1, 2), volume: 0.6 },
+  stopButton: { files: range('switch_', 1, 2), volume: 0.6 },
   beltsStop: { files: range('phaserDown', 1, 3, 1), volume: 0.35 },
   click: { files: ['ui-click-a'], volume: 0.6 },
   levelStart: { files: ['jingles_PIZZI04'], volume: 0.6 },
   win: { files: ['jingles_PIZZI02'], volume: 0.7 },
-  lose: { files: ['jingles_HIT05'], volume: 0.8 },
-  hum: { files: ['spaceEngineLow_000'], volume: 0.16, loop: true },
+  hum: { files: ['spaceEngineLow_000'], volume: 0.26, loop: true },
 } satisfies Record<string, SoundSpec>;
 
 export type SoundId = keyof typeof SOUNDS;
@@ -108,11 +107,11 @@ export class SoundBoard {
     if (!howl.playing()) howl.play();
   }
 
-  /** Fades a loop towards `level` × its base volume. */
-  fadeLoop(id: SoundId, level: number, duration = 0.4): void {
+  /** Sets a loop's level (× base volume) and stereo pan immediately; for per-frame mixing. */
+  mixLoop(id: SoundId, level: number, pan = 0): void {
     const howl = this.bank.get(id)![0];
-    const target = SOUNDS[id].volume * level;
-    if (Math.abs(howl.volume() - target) > 1e-3) howl.fade(howl.volume(), target, duration * 1000);
+    howl.volume(SOUNDS[id].volume * level);
+    howl.stereo(THREE.MathUtils.clamp(pan, -1, 1) * MAX_PAN);
   }
 
   stopLoop(id: SoundId): void {

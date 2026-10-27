@@ -1,4 +1,4 @@
-import { Grid, type Cell } from './Grid';
+import { cellKey, Grid, type Cell } from './Grid';
 import type { LevelDefinition } from './levels';
 
 export type PropKind = 'crate' | 'crateSmall' | 'machine' | 'robotArm' | 'cone';
@@ -31,7 +31,8 @@ export interface LevelLayout {
   walls: readonly Cell[];
   floor: readonly Cell[];
   exits: readonly Cell[];
-  levers: readonly Cell[];
+  /** Emergency-stop buttons, each with the direction of the wall it stands against. */
+  stopButtons: readonly { cell: Cell; wallSide: Cell }[];
   props: readonly { kind: PropKind; cell: Cell }[];
   belts: readonly BeltLine[];
   playerStart: Cell;
@@ -48,7 +49,8 @@ const TILE_TRAITS: Record<string, TileTraits> = {
   X: { walkable: true, opaque: false },
   P: { walkable: true, opaque: false },
   c: { walkable: true, opaque: false },
-  L: { walkable: false, opaque: false },
+  // The button is mounted on the wall beside this tile, so the tile itself stays walkable.
+  L: { walkable: true, opaque: false },
   H: { walkable: false, opaque: false },
   G: { walkable: false, opaque: true },
   F: { walkable: false, opaque: true },
@@ -70,6 +72,12 @@ const BELT_DIRECTIONS: Record<string, Cell> = {
   v: { col: 0, row: 1 },
 };
 
+/** Production-line tiles: belts, hoppers, sorters and the machines they feed. */
+const LINE_TILES = new Set([...Object.keys(BELT_DIRECTIONS), 'H', 'S', 'G', 'F']);
+
+/** Minimum walking steps from any exit to a tile next to the production line. */
+export const MIN_EXIT_TO_BELT_STEPS = 12;
+
 const PROP_TILES: Record<string, PropKind> = {
   B: 'crate',
   b: 'crateSmall',
@@ -89,7 +97,7 @@ export function parseLevel(definition: LevelDefinition): LevelLayout {
   const walls: Cell[] = [];
   const floor: Cell[] = [];
   const exits: Cell[] = [];
-  const levers: Cell[] = [];
+  const stopButtonCells: Cell[] = [];
   const props: { kind: PropKind; cell: Cell }[] = [];
   const hoppers: Cell[] = [];
   let playerStart: Cell | null = null;
@@ -109,7 +117,7 @@ export function parseLevel(definition: LevelDefinition): LevelLayout {
       else floor.push(cell);
 
       if (tile === 'X') exits.push(cell);
-      if (tile === 'L') levers.push(cell);
+      if (tile === 'L') stopButtonCells.push(cell);
       if (tile === 'H') hoppers.push(cell);
       if (tile === 'P') playerStart = cell;
       const prop = PROP_TILES[tile];
@@ -124,6 +132,16 @@ export function parseLevel(definition: LevelDefinition): LevelLayout {
   assertAllBeltTilesUsed(definition.name, rows, belts);
 
   const grid = new Grid(width, height, walkable, opaque);
+  const lineCells = rows.flatMap((line, row) =>
+    [...line].flatMap((tile, col) => (LINE_TILES.has(tile) ? [{ col, row }] : [])),
+  );
+  const steps = stepsFromExits(grid, lineCells, exits);
+  if (steps < MIN_EXIT_TO_BELT_STEPS) {
+    throw new Error(
+      `Level "${definition.name}": the production line is ${steps} steps from an exit; ` +
+        `it must be at least ${MIN_EXIT_TO_BELT_STEPS}`,
+    );
+  }
   for (const route of definition.guards) {
     for (const point of route) {
       if (!grid.isWalkable(point.col, point.row)) {
@@ -132,7 +150,15 @@ export function parseLevel(definition: LevelDefinition): LevelLayout {
     }
   }
 
-  return { grid, walls, floor, exits, levers, props, belts, playerStart };
+  const stopButtons = stopButtonCells.map((cell) => {
+    const wallSide = Object.values(BELT_DIRECTIONS).find((side) => tileAt(cell.col + side.col, cell.row + side.row) === '#');
+    if (!wallSide) {
+      throw new Error(`Level "${definition.name}": emergency stop at ${cell.col},${cell.row} must stand against a wall`);
+    }
+    return { cell, wallSide };
+  });
+
+  return { grid, walls, floor, exits, stopButtons, props, belts, playerStart };
 }
 
 type TileLookup = (col: number, row: number) => string | undefined;
@@ -213,6 +239,23 @@ function assertAllBeltTilesUsed(levelName: string, rows: readonly string[], belt
       }
     }),
   );
+}
+
+/** Fewest walking steps from any exit to a walkable tile beside one of `targets` (breadth-first). */
+function stepsFromExits(grid: Grid, targets: readonly Cell[], exits: readonly Cell[]): number {
+  const neighbours = (cell: Cell): Cell[] => Object.values(BELT_DIRECTIONS).map((offset) => step(cell, offset));
+  const beside = new Set(targets.flatMap(neighbours).map(cellKey));
+  const seen = new Set(exits.map(cellKey));
+  let frontier = [...exits];
+  for (let steps = 0; frontier.length > 0; steps++) {
+    if (frontier.some((cell) => beside.has(cellKey(cell)))) return steps;
+    frontier = frontier.flatMap(neighbours).filter((next) => {
+      if (seen.has(cellKey(next)) || !grid.isWalkable(next.col, next.row)) return false;
+      seen.add(cellKey(next));
+      return true;
+    });
+  }
+  return Infinity;
 }
 
 /** Unit step leading out of the map from a border cell (used for exits). */

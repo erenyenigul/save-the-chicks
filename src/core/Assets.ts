@@ -17,12 +17,57 @@ export const MODEL_PATHS = {
   crate: 'factory/box-large.glb',
   crateSmall: 'factory/box-small.glb',
   robotArm: 'factory/robot-arm-a.glb',
-  lever: 'factory/lever-single.glb',
+  stopButton: 'factory/button-floor-round.glb',
+  statusTube: 'factory/pipe-glass-large-long.glb',
   exitMarker: 'factory/indicator-special-arrow.glb',
   cone: 'factory/cone.glb',
+  // Outside the factory.
+  road: 'roads/road-straight.glb',
+  sidewalk: 'roads/tile-low.glb',
+  streetLight: 'roads/light-square.glb',
+  streetSign: 'roads/road-sign-street.glb',
+  shopA: 'commercial/building-a.glb',
+  shopB: 'commercial/building-b.glb',
+  shopC: 'commercial/building-c.glb',
+  shopD: 'commercial/building-d.glb',
+  shopE: 'commercial/building-e.glb',
+  shopF: 'commercial/building-f.glb',
+  shopG: 'commercial/building-g.glb',
+  shopH: 'commercial/building-h.glb',
+  warehouse: 'industrial/building-g.glb',
+  chimney: 'industrial/chimney-large.glb',
+  tank: 'industrial/detail-tank-large.glb',
+  containerA: 'industrial/shipping-container-a.glb',
+  containerB: 'industrial/shipping-container-b.glb',
+  containerC: 'industrial/shipping-container-c.glb',
+  sedan: 'cars/sedan.glb',
+  taxi: 'cars/taxi.glb',
+  van: 'cars/van.glb',
+  delivery: 'cars/delivery.glb',
+  suv: 'cars/suv.glb',
+  hatchback: 'cars/hatchback-sports.glb',
+  tree: 'suburban/tree-large.glb',
+  treeSmall: 'suburban/tree-small.glb',
+  planter: 'suburban/planter.glb',
+  // (character-female-a is left out: the model has crutches built in.)
+  passerbyA: 'characters/character-female-d.glb',
+  passerbyB: 'characters/character-female-c.glb',
+  passerbyC: 'characters/character-male-a.glb',
+  passerbyD: 'characters/character-male-b.glb',
+  passerbyE: 'characters/character-female-e.glb',
+  passerbyF: 'characters/character-male-d.glb',
 } as const;
 
 export type ModelId = keyof typeof MODEL_PATHS;
+
+/** Sprite textures (Kenney Emotes Pack), relative to /fx. */
+export const TEXTURE_PATHS = {
+  emoteQuestion: 'emote-question.png',
+  emoteAlert: 'emote-alert.png',
+  emoteConfused: 'emote-confused.png',
+} as const;
+
+export type TextureId = keyof typeof TEXTURE_PATHS;
 
 export interface ModelInstance {
   root: THREE.Object3D;
@@ -46,25 +91,38 @@ interface LoadedModel {
 /** Loads all glTF models up front and hands out clones or instancing data. */
 export class Assets {
   private readonly models = new Map<ModelId, LoadedModel>();
+  private readonly textures = new Map<TextureId, THREE.Texture>();
 
-  constructor(private readonly baseUrl = `${import.meta.env.BASE_URL}models/`) {}
+  constructor(private readonly baseUrl = import.meta.env.BASE_URL) {}
 
   async loadAll(onProgress?: (loaded: number, total: number) => void): Promise<void> {
-    const loader = new GLTFLoader();
-    const ids = Object.keys(MODEL_PATHS) as ModelId[];
+    const gltfLoader = new GLTFLoader();
+    const textureLoader = new THREE.TextureLoader();
+    const modelIds = Object.keys(MODEL_PATHS) as ModelId[];
+    const textureIds = Object.keys(TEXTURE_PATHS) as TextureId[];
+    const total = modelIds.length + textureIds.length;
     let loaded = 0;
+    const tick = () => onProgress?.(++loaded, total);
 
-    await Promise.all(
-      ids.map(async (id) => {
-        const gltf = await loader.loadAsync(this.baseUrl + MODEL_PATHS[id]);
-        this.models.set(id, {
-          scene: gltf.scene,
-          animations: gltf.animations,
-          parts: collectParts(gltf.scene),
-        });
-        onProgress?.(++loaded, ids.length);
+    await Promise.all([
+      ...modelIds.map(async (id) => {
+        const gltf = await gltfLoader.loadAsync(`${this.baseUrl}models/${MODEL_PATHS[id]}`);
+        this.models.set(id, { scene: gltf.scene, animations: gltf.animations, parts: collectParts(gltf.scene) });
+        tick();
       }),
-    );
+      ...textureIds.map(async (id) => {
+        const texture = await textureLoader.loadAsync(`${this.baseUrl}fx/${TEXTURE_PATHS[id]}`);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        this.textures.set(id, texture);
+        tick();
+      }),
+    ]);
+  }
+
+  texture(id: TextureId): THREE.Texture {
+    const texture = this.textures.get(id);
+    if (!texture) throw new Error(`Texture "${id}" has not been loaded`);
+    return texture;
   }
 
   /** Deep clone of a model (safe for animated hierarchies) with shadows enabled. */

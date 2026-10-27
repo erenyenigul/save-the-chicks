@@ -7,19 +7,24 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "recolor": "node tools/recolor.mjs",
+    "level-schema": "node --experimental-strip-types --no-warnings=ExperimentalWarning tools/level-schema.ts"
   },
   "dependencies": {
     "@fontsource/lilita-one": "^5.3.0",
     "@fontsource/nunito": "^5.3.0",
     "howler": "^2.2.4",
     "pathfinding": "^0.4.18",
-    "three": "^0.186.1"
+    "three": "^0.186.1",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/howler": "^2.2.13",
     "@types/pathfinding": "^0.1.0",
+    "@types/pngjs": "^6.0.5",
     "@types/three": "^0.186.0",
+    "pngjs": "^7.0.0",
     "typescript": "^5.9.3",
     "vite": "^8.3.5"
   }

@@ -17,13 +17,14 @@ export class Animator<Clip extends string> {
     if (!next) throw new Error(`Animation clip "${name}" not found`);
 
     next.timeScale = timeScale;
-    if (next === this.current) return;
+    // A looping clip that is already playing carries on; a one-shot replays from the start.
+    if (next === this.current && !once) return;
 
     next.reset();
     next.setLoop(once ? THREE.LoopOnce : THREE.LoopRepeat, Infinity);
     next.clampWhenFinished = once;
     next.play();
-    if (this.current) next.crossFadeFrom(this.current, fade, false);
+    if (this.current && this.current !== next) next.crossFadeFrom(this.current, fade, false);
     this.current = next;
   }
 

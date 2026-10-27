@@ -3,18 +3,19 @@ import type { Assets } from '../core/Assets';
 import { Animator } from '../core/Animator';
 import { dampAngle, yawFromDirection } from '../core/math';
 import type { BeltLine, BeltPath, BeltSpot, Sex } from './Belt';
+import { SIDEWALK_HEIGHT } from '../world/Street';
 import { TUNING } from './tuning';
 
 type ChickClip = 'idle' | 'walk' | 'run' | 'dance' | 'gesture-negative';
 
 type ChickState =
   | { kind: 'dropping'; line: BeltLine; elapsed: number }
-  | { kind: 'riding'; path: BeltPath; distance: number }
+  | { kind: 'riding'; path: BeltPath; distance: number; pushTo: number | null }
   | { kind: 'consumed'; elapsed: number }
   | { kind: 'hopping'; from: THREE.Vector3; to: THREE.Vector3; elapsed: number; landOn: BeltSpot | null }
   | { kind: 'following' }
-  | { kind: 'fleeing'; path: THREE.Vector3[]; outward: THREE.Vector3 }
-  | { kind: 'escaping'; direction: THREE.Vector3; elapsed: number }
+  | { kind: 'fleeing'; path: THREE.Vector3[]; route: EscapeRoute }
+  | { kind: 'escaping'; route: EscapeRoute; start: THREE.Vector3; elapsed: number; turned: boolean }
   | { kind: 'gone' };
 
 /**
@@ -24,6 +25,12 @@ type ChickState =
  * removed  finished its exit animation; safe to dispose
  */
 export type ChickEvent = 'scanned' | 'ground' | 'caged' | 'removed';
+
+/** Out through the exit onto the sidewalk, then along it to one side. */
+export interface EscapeRoute {
+  outward: THREE.Vector3;
+  along: THREE.Vector3;
+}
 
 export interface ChickContext {
   beltsRunning: boolean;
@@ -97,6 +104,11 @@ export class Chick {
     return this.state.kind === 'dropping' || this.state.kind === 'riding';
   }
 
+  /** Outside the factory, running off down the sidewalk. */
+  get isEscaping(): boolean {
+    return this.state.kind === 'escaping';
+  }
+
   get isFollowing(): boolean {
     return this.state.kind === 'following';
   }
@@ -108,12 +120,23 @@ export class Chick {
     return state.kind === 'hopping' && state.landOn?.path === path && Math.abs(state.landOn.distance - distance) < gap;
   }
 
-  /** True while this chick is too close to `line`'s hopper for another to drop. */
-  blocksHopper(line: BeltLine): boolean {
-    const state = this.state;
-    if (state.kind === 'dropping') return state.line === line;
-    return state.kind === 'riding' && state.path === line.root && state.distance < 1;
+  /** Still falling out of `line`'s hopper. */
+  isDroppingOnto(line: BeltLine): boolean {
+    return this.state.kind === 'dropping' && this.state.line === line;
   }
+
+  /** Where on a belt this chick is (or is being shoved to), if it is riding one. */
+  get beltPosition(): { path: BeltPath; distance: number } | null {
+    const state = this.state;
+    if (state.kind !== 'riding') return null;
+    return { path: state.path, distance: Math.max(state.distance, state.pushTo ?? 0) };
+  }
+
+  /** Slides this chick forward along its belt to `distance` (used when a newcomer needs room). */
+  shoveTo(distance: number): void {
+    if (this.state.kind === 'riding') this.state.pushTo = Math.max(this.state.pushTo ?? 0, distance);
+  }
+
 
   /** Jump off the belt to `landing` and start following. */
   rescue(landing: THREE.Vector3): void {
@@ -129,20 +152,20 @@ export class Chick {
     this.animator.play('gesture-negative');
   }
 
-  /** Run out through the exit and vanish. */
-  escape(direction: THREE.Vector3): void {
+  /** Run out through the exit, turn down the sidewalk and vanish. */
+  escape(route: EscapeRoute): void {
     if (this.state.kind !== 'following' && this.state.kind !== 'fleeing') return;
-    this.state = { kind: 'escaping', direction: direction.clone().normalize(), elapsed: 0 };
+    this.state = { kind: 'escaping', route, start: this.position.clone(), elapsed: 0, turned: false };
     this.marker.visible = false;
     this.animator.play('dance', { fade: 0.1 });
   }
 
   /** Leave the line and run along `path` to an exit, then out through it. */
-  fleeTo(path: THREE.Vector3[], outward: THREE.Vector3): void {
+  fleeTo(path: THREE.Vector3[], route: EscapeRoute): void {
     const { state } = this;
     const joiningLine = state.kind === 'hopping' && state.landOn === null;
     if (state.kind !== 'following' && !joiningLine) return;
-    this.state = { kind: 'fleeing', path, outward: outward.clone() };
+    this.state = { kind: 'fleeing', path, route };
   }
 
   update(dt: number, context: ChickContext): ChickEvent | null {
@@ -163,7 +186,7 @@ export class Chick {
         const landing = state.line.root.start;
         this.position.lerpVectors(state.line.hopperMouth, landing, t);
         this.position.y = THREE.MathUtils.lerp(state.line.hopperMouth.y, landing.y, t * t);
-        if (t === 1) this.state = { kind: 'riding', path: state.line.root, distance: 0 };
+        if (t === 1) this.state = { kind: 'riding', path: state.line.root, distance: 0, pushTo: null };
         return null;
       }
 
@@ -185,7 +208,7 @@ export class Chick {
         this.face(state.to.x - state.from.x, state.to.z - state.from.z, dt);
         if (t === 1) {
           this.state = state.landOn
-            ? { kind: 'riding', path: state.landOn.path, distance: state.landOn.distance }
+            ? { kind: 'riding', path: state.landOn.path, distance: state.landOn.distance, pushTo: null }
             : { kind: 'following' };
         }
         return null;
@@ -198,20 +221,15 @@ export class Chick {
       case 'fleeing': {
         const next = state.path[0];
         if (!next) {
-          this.escape(state.outward);
+          this.escape(state.route);
           return null;
         }
         if (this.walkTowards(next, dt, false)) state.path.shift();
         return null;
       }
 
-      case 'escaping': {
-        state.elapsed += dt;
-        this.position.addScaledVector(state.direction, chick.escapeSpeed * dt);
-        this.face(state.direction.x, state.direction.z, dt);
-        if (state.elapsed > 0.6) this.animator.play('run');
-        return state.elapsed >= chick.escapeDuration ? this.remove() : null;
-      }
+      case 'escaping':
+        return this.runAway(state, dt);
 
       case 'gone':
         return null;
@@ -229,6 +247,11 @@ export class Chick {
     context: ChickContext,
   ): ChickEvent | null {
     if (context.beltsRunning) state.distance += context.beltSpeed * dt;
+    if (state.pushTo !== null) {
+      // Being shoved along by chicks landing behind — this works even on a stopped belt.
+      state.distance = Math.max(state.distance, Math.min(state.pushTo, state.distance + TUNING.chick.shoveSpeed * dt));
+      if (state.distance >= state.pushTo) state.pushTo = null;
+    }
 
     let event: ChickEvent | null = null;
     if (state.distance >= state.path.length) {
@@ -236,6 +259,7 @@ export class Chick {
       end.machine.kick();
       if (end.kind === 'sorter') {
         state.distance -= state.path.length;
+        state.pushTo = state.pushTo === null ? null : state.pushTo - state.path.length;
         state.path = end.branches[this.sex];
         this.marker.visible = true;
         event = 'scanned';
@@ -249,6 +273,25 @@ export class Chick {
     state.path.directionAt(state.distance, scratch);
     this.face(scratch.x, scratch.z, dt);
     return event;
+  }
+
+  private runAway(state: Extract<ChickState, { kind: 'escaping' }>, dt: number): ChickEvent | null {
+    const { chick } = TUNING;
+    state.elapsed += dt;
+    if (state.elapsed < chick.celebrateDuration) return null; // A little dance in the doorway first.
+    this.animator.play('run');
+
+    scratch.subVectors(this.position, state.start).setY(0);
+    const outwardTravel = scratch.dot(state.route.outward);
+    if (!state.turned && outwardTravel >= chick.sidewalkStep) state.turned = true;
+
+    const heading = state.turned ? state.route.along : state.route.outward;
+    this.position.addScaledVector(heading, chick.escapeSpeed * dt);
+    this.face(heading.x, heading.z, dt);
+    // Step up onto the sidewalk once clear of the doorway.
+    this.position.y = outwardTravel > 0.6 ? SIDEWALK_HEIGHT : 0;
+
+    return state.elapsed >= chick.escapeDuration ? this.remove() : null;
   }
 
   /**

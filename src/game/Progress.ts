@@ -48,9 +48,13 @@ export class Progress {
     return this.data.levels[level.id];
   }
 
-  /** The first level is always open; each later one opens when the previous is completed. */
+  /**
+   * The first level is always open; each later one opens when the previous is completed.
+   * A level already played stays open, even if levels were later inserted before it.
+   */
   isUnlocked(levels: readonly LevelDefinition[], index: number): boolean {
-    return index === 0 || this.record(levels[index - 1])?.completed === true;
+    if (index === 0 || this.record(levels[index]) !== undefined) return true;
+    return this.record(levels[index - 1])?.completed === true;
   }
 
   /** First unlocked level not yet completed, or the last level if everything is done. */

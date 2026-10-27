@@ -25,14 +25,18 @@
           <span class="stat-label">Guards hold</span><span id="hud-captured">0</span>
         </div>
       </div>
-      <div class="tile hud-meters">
-        <div>
-          <span class="stat-label">Emergency stop</span>
-          <div class="meter"><div id="hud-lever-fill" class="meter-fill"></div></div>
+      <div class="hud-cooldowns">
+        <div id="cooldown-stop" class="cooldown" hidden>
+          <div id="cooldown-stop-ring" class="cooldown-ring">
+            <span id="cooldown-stop-seconds" class="cooldown-seconds"></span>
+          </div>
+          <span id="cooldown-stop-label" class="cooldown-label"></span>
         </div>
-        <div>
-          <span class="stat-label">Dash</span>
-          <div class="meter"><div id="hud-dash-fill" class="meter-fill"></div></div>
+        <div id="cooldown-dash" class="cooldown" hidden>
+          <div id="cooldown-dash-ring" class="cooldown-ring">
+            <kbd class="keycap">Shift</kbd>
+          </div>
+          <span class="cooldown-label">Dash</span>
         </div>
       </div>
       <div id="hud-alert" class="hud-alert" hidden>SPOTTED</div>
@@ -43,7 +47,7 @@
         <img id="hint-dash-arrow" class="hint-arrow" src="/ui/arrow-east.png" alt="" />
         <div class="hint-key">
           <kbd class="keycap keycap-wide">Shift</kbd>
-          <span class="hint-caption">dash</span>
+          <span id="hint-dash-caption" class="hint-caption">dash</span>
         </div>
       </div>
       <div id="hint-grab" class="hint hint-grab" hidden>
@@ -63,7 +67,7 @@
         <ul id="overlay-controls" class="controls">
           <li><kbd class="keycap">WASD</kbd> / arrows: move</li>
           <li><kbd class="keycap">Shift</kbd>: dash (guards can hear it)</li>
-          <li><kbd class="keycap">Space</kbd> / <kbd class="keycap">E</kbd>: grab a chick · pull the emergency stop lever</li>
+          <li><kbd class="keycap">Space</kbd> / <kbd class="keycap">E</kbd>: grab a chick · press the emergency stop</li>
           <li><kbd class="keycap">M</kbd>: mute</li>
         </ul>
         <div id="overlay-body" class="overlay-body"></div>
@@ -71,6 +75,11 @@
           <button id="overlay-button" class="button-primary" type="button" disabled>Loading…</button>
         </div>
       </div>
+    </div>
+
+    <div id="wipe" class="wipe" hidden>
+      <div class="wipe-band wipe-band-back"></div>
+      <div class="wipe-band wipe-band-front"></div>
     </div>
 
     <script type="module" src="/src/main.ts"></script>

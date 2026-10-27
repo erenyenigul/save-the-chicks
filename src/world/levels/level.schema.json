@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]+$",
+      "description": "Stable key for saved progress. Never change it once the level has been released."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1
+    },
+    "map": {
+      "minItems": 3,
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 3
+      },
+      "description": "Top-down tile map, one string per row (row 0 is the north/top wall).\n  #  wall            .  floor           X  exit (on the outer wall; the street goes outside it)\n  P  player start    L  emergency stop: button on the adjacent wall (must be next to a wall)\n  H  hopper; a belt starts next to it and runs (> < ^ v) into a grinder G\n  S  sorter: splits the belt, males to a grinder G, females on to an egg farm F\n  B  large crate (blocks sight)          b  small crate (low, see-through)\n  M  machine         R  robot arm        c  traffic cone\nThe production line must be at least 12 walking steps from every exit."
+    },
+    "guards": {
+      "type": "array",
+      "items": {
+        "minItems": 1,
+        "type": "array",
+        "items": {
+          "type": "array",
+          "prefixItems": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          ],
+          "items": false,
+          "minItems": 2,
+          "maxItems": 2
+        }
+      },
+      "description": "One patrol route per guard: walkable [col, row] tiles visited in order, looping."
+    },
+    "rules": {
+      "type": "object",
+      "properties": {
+        "parSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Finishing faster than this earns a time bonus."
+        },
+        "totalChicks": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Chicks the hoppers drop over the whole level."
+        },
+        "chicksToSave": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "description": "Chicks that must reach an exit to win."
+        },
+        "maxLost": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991,
+          "description": "The level is lost once this many chicks are ground up or caged."
+        },
+        "beltSpeed": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "description": "Belt speed in tiles per second."
+        },
+        "spawnInterval": {
+          "type": "object",
+          "properties": {
+            "start": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            },
+            "end": {
+              "type": "number",
+              "exclusiveMinimum": 0
+            }
+          },
+          "required": [
+            "start",
+            "end"
+          ],
+          "additionalProperties": false,
+          "description": "Seconds between drops at the start and at the end of the level."
+        }
+      },
+      "required": [
+        "parSeconds",
+        "totalChicks",
+        "chicksToSave",
+        "maxLost",
+        "beltSpeed",
+        "spawnInterval"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "id",
+    "name",
+    "map",
+    "guards",
+    "rules"
+  ],
+  "additionalProperties": false
+}

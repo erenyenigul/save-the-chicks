@@ -9,8 +9,11 @@ export interface HudState {
   following: number;
   captured: number;
   remaining: number;
-  /** 0 = just used, 1 = ready. */
-  leverCharge: number;
+  /** While belts are stopped: fraction of the stop left. Otherwise recharge progress, 1 = ready. */
+  stopCharge: number;
+  /** Seconds until the belts restart, or until the emergency stop is ready again. */
+  stopSeconds: number;
+  /** 1 = ready. */
   dashCharge: number;
   beltsStopped: boolean;
   alert: boolean;
@@ -27,8 +30,12 @@ export class Hud {
   private readonly captured = element('hud-captured');
   private readonly capturedTile = element('hud-captured-tile');
   private readonly remaining = element('hud-remaining');
-  private readonly leverFill = element('hud-lever-fill');
-  private readonly dashFill = element('hud-dash-fill');
+  private readonly stopDial = element('cooldown-stop');
+  private readonly stopRing = element('cooldown-stop-ring');
+  private readonly stopSeconds = element('cooldown-stop-seconds');
+  private readonly stopLabel = element('cooldown-stop-label');
+  private readonly dashDial = element('cooldown-dash');
+  private readonly dashRing = element('cooldown-dash-ring');
   private readonly alert = element('hud-alert');
   private readonly danger = element('hud-danger');
   private readonly prompt = element('hud-prompt');
@@ -55,10 +62,18 @@ export class Hud {
     this.toggle(this.prompt, 'hidden', state.prompt === null);
     this.toggle(this.alert, 'hidden', !state.alert);
     this.toggle(this.danger, 'hidden', !state.alert);
-    this.toggle(this.leverFill, 'active', state.beltsStopped);
-    this.toggle(this.dashFill, 'active', state.dashCharge >= 1);
-    this.leverFill.style.setProperty('--value', state.leverCharge.toFixed(3));
-    this.dashFill.style.setProperty('--value', state.dashCharge.toFixed(3));
+
+    // Cooldown dials only appear while something is actually counting down.
+    const stopBusy = state.beltsStopped || state.stopCharge < 1;
+    this.toggle(this.stopDial, 'hidden', !stopBusy);
+    if (stopBusy) {
+      this.toggle(this.stopRing, 'active', state.beltsStopped);
+      this.stopRing.style.setProperty('--value', state.stopCharge.toFixed(3));
+      this.text(this.stopSeconds, `${Math.ceil(state.stopSeconds)}s`);
+      this.text(this.stopLabel, state.beltsStopped ? 'Belts stopped' : 'Stop recharging');
+    }
+    this.toggle(this.dashDial, 'hidden', state.dashCharge >= 1);
+    this.dashRing.style.setProperty('--value', state.dashCharge.toFixed(3));
   }
 
   private text(target: HTMLElement, value: string): void {

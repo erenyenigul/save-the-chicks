@@ -1,10 +1,14 @@
 import * as THREE from 'three/webgpu';
-import type { Assets, ModelId } from '../core/Assets';
+import type { Assets, ModelId, ModelInstance } from '../core/Assets';
 import { yawFromDirection } from '../core/math';
 import { cellKey, type Cell, type Grid } from './Grid';
 import { outwardDirection, type BeltRun, type BeltTile, type LevelLayout, type PropKind } from './LevelLayout';
 
 export const WALL_HEIGHT = 1.1;
+const WALL_CAP_HEIGHT = 0.08;
+/** Muted red brick, with a lighter coping (from the top-down camera the coping is most of what you see). */
+const WALL_COLOR = 0x8f5446;
+const WALL_CAP_COLOR = 0xa86a5a;
 
 const PROP_MODELS: Record<PropKind, ModelId> = {
   crate: 'crate',
@@ -15,7 +19,16 @@ const PROP_MODELS: Record<PropKind, ModelId> = {
 };
 
 const ROBOT_ARM_SCALE = 0.55;
-const LEVER_SCALE = 1.8;
+const STOP_BUTTON_SCALE = 2;
+/** Height of the wall-mounted button's centre. */
+const STOP_BUTTON_HEIGHT = 0.65;
+/**
+ * How far the button face tilts up from pointing straight out of the wall. Facing fully
+ * sideways it would be edge-on to the top-down camera; tilted, it reads like a control panel.
+ */
+const STOP_BUTTON_TILT = THREE.MathUtils.degToRad(0);
+/** The status tube is the kit's 2-long glass pipe, stretched along the wall and slimmed. */
+const STATUS_TUBE_SCALE = new THREE.Vector3(1.2, 0.5, 0.5);
 
 /** Yaw that turns a model's authored facing to +Z, so `yawFromDirection` can aim it. */
 const AUTHORED_FACING = {
@@ -25,12 +38,19 @@ const AUTHORED_FACING = {
   exitMarker: Math.PI / 2, // arrow points to -X
 };
 
+export interface StopStation {
+  /** The push button; its cap is the child named "button". */
+  button: ModelInstance;
+  /** Glass tube on the wall beside the button; its liquid shows the stop's state. Runs along local X. */
+  tube: THREE.Object3D;
+}
+
 /** Scene objects the simulation needs to animate after the level is built. */
 export interface LevelScene {
   root: THREE.Group;
   /** Grinders, farms and scanners, keyed by `cellKey` of their tile. */
   machines: ReadonlyMap<string, THREE.Object3D>;
-  levers: readonly THREE.Object3D[];
+  stopStations: readonly StopStation[];
   dispose(): void;
 }
 
@@ -73,32 +93,37 @@ export function buildLevelScene(layout: LevelLayout, assets: Assets): LevelScene
     }
   };
 
-  const addUnique = (id: ModelId, placement: Placement): THREE.Object3D => {
-    const { root: object } = assets.instantiate(id);
-    object.position.set(placement.cell.col, placement.y ?? 0, placement.cell.row);
-    object.rotation.y = placement.yaw ?? 0;
-    object.scale.setScalar(placement.scale ?? 1);
-    root.add(object);
-    return object;
+  const place = (id: ModelId, placement: Placement): ModelInstance => {
+    const instance = assets.instantiate(id);
+    instance.root.position.set(placement.cell.col, placement.y ?? 0, placement.cell.row);
+    instance.root.rotation.y = placement.yaw ?? 0;
+    instance.root.scale.setScalar(placement.scale ?? 1);
+    root.add(instance.root);
+    return instance;
   };
+  const addUnique = (id: ModelId, placement: Placement): THREE.Object3D => place(id, placement).root;
 
   // Floor and exit markings.
   addInstanced('floor', layout.floor.map((cell) => ({ cell })));
   addInstanced('exitMarker', layout.exits.map((cell) => ({ cell, y: 0.01, yaw: exitArrowYaw(cell, layout.grid) })));
 
   // Walls are plain blocks; the kit's wall pieces are designed for interiors seen from eye level.
-  const wallGeometry = new THREE.BoxGeometry(1, WALL_HEIGHT, 1);
-  wallGeometry.translate(0, WALL_HEIGHT / 2, 0);
-  const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x4a4278, roughness: 0.85 });
-  owned.push(wallGeometry, wallMaterial);
-  const walls = new THREE.InstancedMesh(wallGeometry, wallMaterial, layout.walls.length);
-  const wallMatrix = new THREE.Matrix4();
-  layout.walls.forEach((cell, i) => walls.setMatrixAt(i, wallMatrix.makeTranslation(cell.col, 0, cell.row)));
-  walls.castShadow = true;
-  walls.receiveShadow = true;
-  walls.computeBoundingSphere();
-  instanced.push(walls);
-  root.add(walls);
+  const addBlocks = (height: number, y: number, color: number): void => {
+    const geometry = new THREE.BoxGeometry(1, height, 1);
+    geometry.translate(0, y + height / 2, 0);
+    const material = new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+    owned.push(geometry, material);
+    const mesh = new THREE.InstancedMesh(geometry, material, layout.walls.length);
+    const matrix = new THREE.Matrix4();
+    layout.walls.forEach((cell, i) => mesh.setMatrixAt(i, matrix.makeTranslation(cell.col, 0, cell.row)));
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    mesh.computeBoundingSphere();
+    instanced.push(mesh);
+    root.add(mesh);
+  };
+  addBlocks(WALL_HEIGHT, 0, WALL_COLOR);
+  addBlocks(WALL_CAP_HEIGHT, WALL_HEIGHT, WALL_CAP_COLOR);
 
   // Props.
   const byKind = new Map<PropKind, Placement[]>();
@@ -142,12 +167,30 @@ export function buildLevelScene(layout: LevelLayout, assets: Assets): LevelScene
     beltTiles.map((tile) => ({ cell: tile.cell, yaw: beltYaw(tile.direction, 'conveyor') })),
   );
 
-  const levers = layout.levers.map((cell) => addUnique('lever', { cell, yaw: Math.PI / 2, scale: LEVER_SCALE }));
+  // Emergency stops: a push button on the wall, and a status tube lying along the top of that wall.
+  const stopStations = layout.stopButtons.map(({ cell, wallSide }) => {
+    const button = place('stopButton', { cell, scale: STOP_BUTTON_SCALE });
+    // The kit's button faces up (+Y); turn it to face out of the wall into the room, tilted upward.
+    const facing = new THREE.Vector3(-wallSide.col, 0, -wallSide.row)
+      .multiplyScalar(Math.cos(STOP_BUTTON_TILT))
+      .setY(Math.sin(STOP_BUTTON_TILT));
+    button.root.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), facing);
+    button.root.position.set(cell.col + wallSide.col * 0.5, STOP_BUTTON_HEIGHT, cell.row + wallSide.row * 0.5);
+    const wall = { col: cell.col + wallSide.col, row: cell.row + wallSide.row };
+    // The tube runs along the wall, i.e. across the direction from the button to the wall.
+    const tube = addUnique('statusTube', {
+      cell: wall,
+      y: WALL_HEIGHT + WALL_CAP_HEIGHT,
+      yaw: wallSide.col !== 0 ? Math.PI / 2 : 0,
+    });
+    tube.scale.copy(STATUS_TUBE_SCALE);
+    return { button, tube };
+  });
 
   return {
     root,
     machines,
-    levers,
+    stopStations,
     dispose() {
       root.removeFromParent();
       for (const mesh of instanced) mesh.dispose();

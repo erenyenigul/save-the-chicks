@@ -17,7 +17,8 @@ export const TUNING = {
     turnRate: 14,
     /** How far from the player a chick on a belt can be grabbed. */
     grabRange: 1.5,
-    leverRange: 1.4,
+    /** How close the player must be to press an emergency-stop button. */
+    buttonRange: 1.5,
   },
   chick: {
     scale: 0.34,
@@ -28,13 +29,22 @@ export const TUNING = {
     grindDuration: 0.35,
     /** Spacing between chicks in the follower line. */
     spacing: 0.65,
+    /** Gap kept between chicks on a belt when newcomers push the queue along. */
+    beltSpacing: 0.7,
+    /** Speed (tiles/s) at which chicks slide when pushed along a belt. */
+    shoveSpeed: 3,
     followSpeed: 8,
     /** Speed per tile of distance to its place in line, so chicks ease in rather than snap. */
     followGain: 7,
     /** How quickly speed changes (damping rate). */
     acceleration: 10,
     escapeSpeed: 3,
-    escapeDuration: 2,
+    /** Seconds dancing in the exit before running off. */
+    celebrateDuration: 0.5,
+    /** How far out of the exit an escaping chick runs before turning down the sidewalk. */
+    sidewalkStep: 1.5,
+    /** Total seconds an escaping chick stays in the world. */
+    escapeDuration: 8,
     turnRate: 12,
   },
   guard: {
@@ -67,8 +77,13 @@ export const TUNING = {
     /** Seconds spent looking around at each search spot. */
     glanceDuration: 0.9,
     repathInterval: 0.35,
+    /** Seconds to wait before retrying a delivery that found no reachable drop-off. */
+    deliveryRetryDelay: 3,
+    /** A guard on a path that moves less than this in `stallTimeout` seconds is considered stuck. */
+    stallDistance: 0.3,
+    stallTimeout: 1.5,
   },
-  lever: {
+  emergencyStop: {
     stopDuration: 8,
     cooldown: 25,
   },

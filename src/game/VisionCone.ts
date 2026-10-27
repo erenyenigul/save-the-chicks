@@ -4,7 +4,7 @@ import type { Grid } from '../world/Grid';
 const RAY_COUNT = 40;
 const FLOOR_OFFSET = 0.03;
 
-const CALM = new THREE.Color(0xfff3a0);
+const CALM = new THREE.Color(0x5aa9e6);
 const ALARMED = new THREE.Color(0xff3b4e);
 
 /**

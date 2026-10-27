@@ -1,7 +1,12 @@
 import * as THREE from 'three/webgpu';
 import { element } from './dom';
 
-export type Lesson = 'dash' | 'grab';
+/**
+ * dash    any dash at all
+ * escape  a dash while a guard is chasing (the hint comes back during chases until then)
+ * grab    grabbing a chick off a belt
+ */
+export type Lesson = 'dash' | 'escape' | 'grab';
 
 export interface TutorialCues {
   player: THREE.Vector3;
@@ -9,6 +14,9 @@ export interface TutorialCues {
   facing: number;
   /** Chick within reach, if any. */
   grabbable: THREE.Vector3 | null;
+  /** A guard is chasing the player. */
+  chased: boolean;
+  dashReady: boolean;
 }
 
 const STORAGE_KEY = 'coop-breakout:lessons';
@@ -19,14 +27,16 @@ const GRAB_HINT_HEIGHT = 1.7;
 const scratch = new THREE.Vector3();
 
 /**
- * One-time, in-world hints: a Shift + arrow next to the player until they first
- * dash, and a Space key over the first chick they can grab. Learned lessons are
- * remembered across sessions when storage is available.
+ * In-world hints: a Shift + arrow next to the player until they first dash (and
+ * again whenever a guard chases them, until they have dashed away once), and a
+ * Space key over the first chick they can grab. Learned lessons are remembered
+ * across sessions when storage is available.
  */
 export class Tutorial {
   private readonly learned = loadLearned();
   private readonly dashHint = element('hint-dash');
   private readonly dashArrow = element<HTMLImageElement>('hint-dash-arrow');
+  private readonly dashCaption = element('hint-dash-caption');
   private readonly grabHint = element('hint-grab');
 
   complete(lesson: Lesson): void {
@@ -37,12 +47,15 @@ export class Tutorial {
 
   /** Pass null to hide every hint (e.g. while a menu is open). */
   update(camera: THREE.Camera, cues: TutorialCues | null): void {
-    const showDash = cues !== null && !this.learned.has('dash');
+    const escapeHint = cues !== null && cues.chased && cues.dashReady && !this.learned.has('escape');
+    const showDash = escapeHint || (cues !== null && !this.learned.has('dash'));
+    this.dashHint.classList.toggle('urgent', escapeHint);
+    this.dashCaption.textContent = escapeHint ? 'dash away!' : 'dash';
     const showGrab = cues?.grabbable != null && !this.learned.has('grab');
     this.dashHint.hidden = !showDash;
     this.grabHint.hidden = !showGrab;
 
-    if (showDash) {
+    if (showDash && cues) {
       const origin = toScreen(cues.player, camera);
       scratch.set(Math.sin(cues.facing), 0, Math.cos(cues.facing)).add(cues.player);
       const ahead = toScreen(scratch, camera);

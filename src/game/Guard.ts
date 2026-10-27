@@ -16,8 +16,9 @@ type GuardClip = 'idle' | 'walk' | 'sprint' | 'emote-yes';
  * search     lost them; checks where they were heading and nearby spots, then gives up
  * deliver    carrying grabbed chicks to the nearest belt to put them back
  * handoff    standing at the belt while the chicks go back on, one by one
+ * halted     the player was caught; stands still for the rest of the level
  */
-type GuardMode = 'patrol' | 'suspicious' | 'chase' | 'search' | 'deliver' | 'handoff';
+type GuardMode = 'patrol' | 'suspicious' | 'chase' | 'search' | 'deliver' | 'handoff' | 'halted';
 
 export interface GuardContext {
   grid: Grid;
@@ -38,6 +39,9 @@ export interface GuardContext {
  * delivered  arrived at the drop-off; the carried chicks should go back on the belt
  */
 export type GuardEvent = 'spotted' | 'caught' | 'delivered';
+
+/** What a guard's body language shows: curious (?), confused (searching), alarmed (!). */
+export type GuardMood = 'calm' | 'curious' | 'confused' | 'alarmed';
 
 /** What the guard perceived this frame, strongest first. */
 type Stimulus = 'player' | 'chick' | 'noise' | null;
@@ -60,6 +64,11 @@ export class Guard {
   private routeIndex = 0;
   private path: THREE.Vector3[] = [];
   private pauseTimer = 0;
+  /** After a failed delivery attempt, wait this long before planning another. */
+  private deliveryRetry = 0;
+  /** Where the guard was when it last made real progress along a path, and for how long since. */
+  private readonly progressMark = new THREE.Vector3();
+  private stalledFor = 0;
   private repathTimer = 0;
   private lostTimer = 0;
   /** Spots still to check while searching. */
@@ -90,6 +99,23 @@ export class Guard {
     return this.mode === 'chase';
   }
 
+  get mood(): GuardMood {
+    switch (this.mode) {
+      case 'chase':
+        return 'alarmed';
+      case 'search':
+        return 'confused';
+      case 'suspicious':
+        return 'curious';
+      default:
+        return 'calm';
+    }
+  }
+
+  get isDelivering(): boolean {
+    return this.mode === 'deliver';
+  }
+
   get isHandingOff(): boolean {
     return this.mode === 'handoff';
   }
@@ -111,13 +137,24 @@ export class Guard {
 
   /** Stop and celebrate once the player is caught. */
   gloat(target: THREE.Vector3): void {
-    this.object.rotation.y = yawFromDirection(target.x - this.position.x, target.z - this.position.z);
+    this.halt(target);
     this.animator.play('emote-yes');
+  }
+
+  /** Stop for good (the level is over), turning to look at `target`. */
+  halt(target: THREE.Vector3): void {
+    this.mode = 'halted';
     this.path = [];
+    this.object.rotation.y = yawFromDirection(target.x - this.position.x, target.z - this.position.z);
+    this.animator.play('idle');
   }
 
   update(dt: number, context: GuardContext): GuardEvent | null {
     this.animator.update(dt);
+    if (this.mode === 'halted') {
+      this.cone.update(this.position, this.object.rotation.y, context.grid, 0);
+      return null;
+    }
     const stimulus = this.perceive(context);
 
     let event: GuardEvent | null = null;
@@ -203,7 +240,8 @@ export class Guard {
     }
 
     if (this.mode === 'suspicious') this.resumeDuties(context);
-    if (this.mode === 'patrol' && context.carrying) this.startDelivery(context);
+    this.deliveryRetry = Math.max(0, this.deliveryRetry - dt);
+    if (this.mode === 'patrol' && context.carrying && this.deliveryRetry === 0) this.startDelivery(context);
 
     if (this.mode === 'deliver') return this.deliver(dt, context);
     this.patrol(dt, context.grid);
@@ -308,12 +346,14 @@ export class Guard {
 
   private startDelivery(context: GuardContext): void {
     const dropOff = context.findDropOff(this.position);
-    if (!dropOff) {
+    const path = dropOff ? context.grid.findPath(this.position, dropOff) : [];
+    if (!dropOff || (path.length === 0 && distanceXZ(this.position, dropOff) > 0.5)) {
       this.mode = 'patrol';
+      this.deliveryRetry = TUNING.guard.deliveryRetryDelay;
       return;
     }
     this.mode = 'deliver';
-    this.path = context.grid.findPath(this.position, dropOff);
+    this.path = path;
   }
 
   private deliver(dt: number, context: GuardContext): GuardEvent | null {
@@ -359,7 +399,28 @@ export class Guard {
     if (this.path.length === 0) this.pauseTimer = TUNING.guard.waypointPause;
   }
 
+  /**
+   * Safety net for anything that blocks a guard (another guard parked on their waypoint, say):
+   * if they haven't really moved for a while, drop the path so the current mode plans afresh.
+   */
+  private detectStall(dt: number): void {
+    const { guard } = TUNING;
+    if (this.path.length === 0 || distanceXZ(this.position, this.progressMark) > guard.stallDistance) {
+      this.progressMark.copy(this.position);
+      this.stalledFor = 0;
+      return;
+    }
+    this.stalledFor += dt;
+    if (this.stalledFor > guard.stallTimeout) {
+      // An emptied path makes the current mode re-plan; a delivering guard reports arrival,
+      // and the drop-off then checks whether they are actually close enough.
+      this.path = [];
+      this.stalledFor = 0;
+    }
+  }
+
   private followPath(dt: number, speed: number, grid: Grid): void {
+    this.detectStall(dt);
     let budget = speed * dt;
     while (budget > 0 && this.path.length > 0) {
       const target = this.path[0];

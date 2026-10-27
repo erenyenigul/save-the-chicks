@@ -119,6 +119,7 @@ export class Overlay {
     this.title.textContent = 'Something went wrong';
     this.text.hidden = false;
     this.text.textContent = message;
+    this.text.style.whiteSpace = 'pre-line';
     this.body.replaceChildren();
     this.controls.hidden = true;
     this.actions.replaceChildren();
@@ -137,9 +138,13 @@ export class Overlay {
     buttons[0]?.focus();
   }
 
+  hide(): void {
+    this.root.hidden = true;
+  }
+
+  /** Buttons only report the choice; the caller decides when the overlay goes (e.g. under a wipe). */
   private choose(onClick: () => void): void {
     this.onButton();
-    this.root.hidden = true;
     onClick();
   }
 }
