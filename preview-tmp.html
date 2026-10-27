@@ -1,0 +1,12 @@
+<!doctype html><body style="margin:0"><script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+const names = ['screen-panel-wide','screen-panel-small','screen-wide','screen-flat','machine-bed','piston-round','piston-square','robot-arm-b','crane-lift','structure-yellow-short','machine-window','scanner-low'];
+const r = new THREE.WebGLRenderer({antialias:true}); r.setSize(1600,900); document.body.appendChild(r.domElement);
+const s = new THREE.Scene(); s.background = new THREE.Color(0xb0a898);
+s.add(new THREE.HemisphereLight(0xffffff,0x888888,2)); const d=new THREE.DirectionalLight(0xffffff,2); d.position.set(3,10,5); s.add(d);
+const cam = new THREE.PerspectiveCamera(30,16/9,0.1,100); cam.position.set(0,16,10); cam.lookAt(0,0,0.5);
+const l = new GLTFLoader();
+await Promise.all(names.map(async (n,i)=>{ const g = await l.loadAsync('/models/factory/'+n+'.glb'); const b=new THREE.Box3().setFromObject(g.scene); console.log(i, n, JSON.stringify(b.getSize(new THREE.Vector3()))); g.scene.position.set((i%4-1.5)*3, 0, Math.floor(i/4)*3-3); s.add(g.scene); }));
+r.render(s,cam); window.done=true;
+</script></body>

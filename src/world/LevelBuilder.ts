@@ -13,13 +13,13 @@ const WALL_CAP_COLOR = 0xa86a5a;
 const PROP_MODELS: Record<PropKind, ModelId> = {
   crate: 'crate',
   crateSmall: 'crateSmall',
-  tank: 'tank',
+  loader: 'loader',
   robotArm: 'robotArm',
   cone: 'cone',
 };
 
 /** Props that need resizing to sit on a single tile. */
-const PROP_SCALES: Partial<Record<PropKind, number>> = { robotArm: 0.55, tank: 0.75 };
+const PROP_SCALES: Partial<Record<PropKind, number>> = { robotArm: 0.55, loader: 1.2 };
 const STOP_BUTTON_SCALE = 2;
 /** Height of the wall-mounted button's centre. */
 const STOP_BUTTON_HEIGHT = 0.65;

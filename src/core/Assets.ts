@@ -45,6 +45,7 @@ export const MODEL_PATHS = {
   delivery: 'cars/delivery.glb',
   suv: 'cars/suv.glb',
   hatchback: 'cars/hatchback-sports.glb',
+  loader: 'platformer/crate.glb',
   tree: 'suburban/tree-large.glb',
   treeSmall: 'suburban/tree-small.glb',
   planter: 'suburban/planter.glb',

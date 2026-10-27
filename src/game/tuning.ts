@@ -44,7 +44,7 @@ export const TUNING = {
     /** How far out of the exit an escaping chick runs before turning down the sidewalk. */
     sidewalkStep: 1.5,
     /** Once the player is this close to an exit, the whole line runs straight out. */
-    exitCallDistance: 3,
+    exitCallDistance: 2,
     /** Total seconds an escaping chick stays in the world. */
     escapeDuration: 8,
     turnRate: 12,

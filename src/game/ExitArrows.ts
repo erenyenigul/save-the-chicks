@@ -4,6 +4,8 @@ import { outwardDirection } from '../world/LevelLayout';
 
 const ACTIVE_COLOR = new THREE.Color(0x4fe07a);
 const FADE_RATE = 6;
+/** Emissive glow while active, breathing between these strengths. */
+const GLOW = { min: 0.35, max: 0.7, rate: 3 };
 /** Hops per second; each arrow hops a beat after the one before it, so the row ripples. */
 const HOP_RATE = 1.6;
 const HOP_STAGGER = 0.12;
@@ -19,7 +21,7 @@ interface Arrow {
 
 /**
  * The exit floor arrows come alive while the player has chicks to bring out:
- * they turn green and hop out of the door one after another, pointing the way.
+ * they turn green, glow, and hop out of the door one after another, pointing the way.
  */
 export class ExitArrows {
   private readonly arrows: Arrow[];
@@ -51,7 +53,11 @@ export class ExitArrows {
   update(dt: number, active: boolean): void {
     this.time += dt;
     this.strength = THREE.MathUtils.damp(this.strength, active ? 1 : 0, FADE_RATE, dt);
-    for (const tint of this.tints) tint.material.color.lerpColors(tint.base, ACTIVE_COLOR, this.strength);
+    const glow = THREE.MathUtils.lerp(GLOW.min, GLOW.max, 0.5 + 0.5 * Math.sin(this.time * GLOW.rate));
+    for (const { material, base } of this.tints) {
+      material.color.lerpColors(base, ACTIVE_COLOR, this.strength);
+      material.emissive.copy(ACTIVE_COLOR).multiplyScalar(glow * this.strength);
+    }
 
     this.arrows.forEach((arrow, i) => {
       // Each beat: a hop out and back over the first half, then a rest.

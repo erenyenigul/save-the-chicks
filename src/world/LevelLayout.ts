@@ -1,7 +1,7 @@
 import { cellKey, Grid, type Cell } from './Grid';
 import type { LevelDefinition } from './levels';
 
-export type PropKind = 'crate' | 'crateSmall' | 'tank' | 'robotArm' | 'cone';
+export type PropKind = 'crate' | 'crateSmall' | 'loader' | 'robotArm' | 'cone';
 
 export interface BeltTile {
   cell: Cell;
@@ -91,7 +91,7 @@ const BUTTON_WALL_SIDES: readonly Cell[] = [
 const PROP_TILES: Record<string, PropKind> = {
   B: 'crate',
   b: 'crateSmall',
-  T: 'tank',
+  T: 'loader',
   R: 'robotArm',
   c: 'cone',
 };

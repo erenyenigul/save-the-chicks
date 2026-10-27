@@ -6,7 +6,7 @@ const MAP_LEGEND = `Top-down tile map, one string per row (row 0 is the north/to
   H  hopper; a belt starts next to it and runs (> < ^ v) into a grinder G
   S  sorter: splits the belt, males to a grinder G, females on to an egg farm F
   B  large crate (blocks sight)          b  small crate (low, see-through)
-  T  storage tank    R  robot arm        c  traffic cone
+  T  parked loader   R  robot arm        c  traffic cone
 The production line must be at least 12 walking steps from every exit.`;
 
 /** A tile as [col, row] in the file; { col, row } in the game. */
