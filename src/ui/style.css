@@ -1,0 +1,561 @@
+/*
+ * UI skin: Kenney UI Pack sprites (public/ui), drawn as 9-slice frames with
+ * border-image. The "Double" sprites are 2× resolution, so a 32px source
+ * slice maps to a 16px CSS border.
+ */
+:root {
+  --ink: #3b3156;
+  --ink-dim: #7a7396;
+  --ink-light: #f4f1ff;
+  --accent: #ffb43b;
+  --good: #2f9e5b;
+  --bad: #d8394a;
+  --display: 'Lilita One', 'Arial Rounded MT Bold', system-ui, sans-serif;
+  --body: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family: var(--body);
+  color: var(--ink);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #1b1730;
+}
+
+#app,
+#app canvas {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+/* ---- Kenney frames ---- */
+
+.tile {
+  border-style: solid;
+  border-width: 12px 12px 16px;
+  border-image: url('/ui/tile-grey.png') 24 24 32 fill / 12px 12px 16px stretch;
+}
+
+.keycap {
+  display: inline-block;
+  min-width: 32px;
+  padding: 0 4px;
+  border-style: solid;
+  border-width: 6px 6px 9px;
+  border-image: url('/ui/tile-grey.png') 24 24 32 fill / 6px 6px 9px stretch;
+  color: var(--ink);
+  font-family: var(--display);
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+/* ---- HUD ---- */
+
+.hud {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.hud-level {
+  position: absolute;
+  bottom: 12px;
+  left: 16px;
+  font-family: var(--display);
+  font-size: 22px;
+  letter-spacing: 0.02em;
+  color: var(--accent);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+}
+
+.hud-stats {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  display: flex;
+  gap: 4px;
+}
+
+.stat {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 92px;
+  padding: 0 6px;
+  font-family: var(--display);
+  font-size: 26px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-label {
+  font-family: var(--body);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.stat-saved span:last-child {
+  color: var(--good);
+}
+
+.stat-lost span:last-child,
+.stat-captured span:last-child {
+  color: var(--bad);
+}
+
+.hud-meters {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 212px;
+  padding: 0 4px;
+}
+
+.meter {
+  position: relative;
+  height: 18px;
+  margin-top: 2px;
+  border-style: solid;
+  border-width: 7px 7px 9px;
+  border-image: url('/ui/meter-track.png') 24 24 32 fill / 7px 7px 9px stretch;
+}
+
+/* Fills the track's face; --value in [0, 1] is set by Hud.ts. */
+.meter-fill {
+  --value: 1;
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  height: 12px;
+  width: max(12px, calc((100% + 10px) * var(--value)));
+  border-style: solid;
+  border-width: 6px;
+  border-image: url('/ui/meter-fill-yellow.png') 24 fill / 6px stretch;
+}
+
+.meter-fill.active {
+  border-image-source: url('/ui/meter-fill-green.png');
+}
+
+.hud-alert {
+  position: absolute;
+  top: 96px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 6px 22px 8px;
+  border-radius: 12px;
+  background: var(--bad);
+  box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.22), 0 4px 14px rgba(216, 57, 74, 0.5);
+  color: var(--ink-light);
+  font-family: var(--display);
+  font-size: 24px;
+  letter-spacing: 0.14em;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  animation: alarm-pop 0.45s ease-in-out infinite alternate;
+}
+
+/* Red edge glow while a guard is chasing. */
+.hud-danger {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at center, transparent 55%, rgba(220, 30, 50, 0.55) 100%);
+  animation: danger-pulse 0.62s ease-in-out infinite;
+}
+
+.hud-prompt {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 0 8px;
+  font-family: var(--display);
+  font-size: 18px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.hud-backend {
+  position: absolute;
+  bottom: 8px;
+  right: 12px;
+  font-size: 11px;
+  color: rgba(244, 241, 255, 0.6);
+}
+
+/* ---- Tutorial hints, anchored to world positions by Tutorial.ts ---- */
+
+.hint {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  opacity: 0.8;
+  transform: translate(-50%, -50%);
+  animation: bob 0.9s ease-in-out infinite alternate;
+}
+
+/* Zero-size anchor on the player; Tutorial.ts moves the arrow around it. */
+.hint-dash {
+  width: 0;
+  height: 0;
+  transform: none;
+}
+
+.hint-key {
+  position: absolute;
+  top: 38px;
+  left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateX(-50%);
+}
+
+.hint-grab {
+  transform: translate(-50%, -100%);
+}
+
+.hint-arrow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 40px;
+  height: 40px;
+  opacity: 0.85;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.4));
+}
+
+.keycap-wide {
+  min-width: 84px;
+  font-size: 18px;
+}
+
+.hint-caption {
+  color: var(--ink-light);
+  font-family: var(--display);
+  font-size: 14px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+}
+
+/* ---- Menu / result overlay ---- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(16, 13, 30, 0.55);
+  backdrop-filter: blur(3px);
+}
+
+.panel {
+  max-width: 480px;
+  padding: 16px 20px 12px;
+  border-width: 24px 24px 32px;
+  border-image-width: 24px 24px 32px;
+}
+
+.panel h1 {
+  margin: 0 0 12px;
+  font-family: var(--display);
+  font-size: 44px;
+  font-weight: 400;
+  line-height: 1;
+  color: var(--accent);
+  -webkit-text-stroke: 1.5px #b56d00;
+  text-shadow: 0 3px 0 #b56d00;
+}
+
+.panel p {
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.controls {
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+  line-height: 2.2;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.actions button {
+  flex: 1 1 140px;
+}
+
+.panel button.button-primary,
+.panel button.button-secondary {
+  height: 60px;
+  padding: 0;
+  border-style: solid;
+  border-width: 12px 12px 16px;
+  border-image: url('/ui/button-yellow.png') 24 24 32 fill / 12px 12px 16px stretch;
+  background: none;
+  color: #5a3a00;
+  font-family: var(--display);
+  font-size: 22px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+}
+
+.panel button.button-secondary {
+  height: 56px;
+  border-image-source: url('/ui/tile-grey.png');
+  color: var(--ink);
+  font-size: 18px;
+}
+
+.panel button.button-primary:active:not(:disabled) {
+  /* Pressed sprite has no depth: shift down so the face appears to sink. */
+  border-image-source: url('/ui/button-yellow-pressed.png');
+  border-width: 16px 12px 12px;
+}
+
+.panel button:focus {
+  outline: none;
+}
+
+.panel button:focus-visible {
+  filter: brightness(1.08);
+}
+
+.panel button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* ---- Level select ---- */
+
+.level-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.panel button.level-row {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 10px;
+  width: 100%;
+  padding: 0 4px;
+  background: none;
+  color: var(--ink);
+  font-family: var(--body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.panel button.level-row:hover:not(:disabled) {
+  border-image-source: url('/ui/tile-grey-pressed.png');
+}
+
+.panel button.level-row:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.level-number {
+  grid-row: span 2;
+  font-family: var(--display);
+  font-size: 28px;
+  color: var(--accent);
+  -webkit-text-stroke: 1px #b56d00;
+}
+
+.level-name {
+  font-family: var(--display);
+  font-size: 20px;
+}
+
+.level-best,
+.level-locked {
+  grid-column: 2 / span 2;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-dim);
+}
+
+.level-locked {
+  grid-column: 3;
+  grid-row: 1;
+}
+
+.stars {
+  white-space: nowrap;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: 2px;
+}
+
+.star {
+  color: rgba(59, 49, 86, 0.2);
+}
+
+.star.filled {
+  color: #ffbe1a;
+  text-shadow: 0 2px 0 #c77f00;
+}
+
+/* ---- Results ---- */
+
+.result-summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-bottom: 12px;
+}
+
+.stars-large {
+  font-size: 40px;
+}
+
+.result-total {
+  font-family: var(--display);
+  font-size: 36px;
+}
+
+.result-total-label {
+  font-size: 18px;
+  color: var(--ink-dim);
+}
+
+.badge-best {
+  padding: 2px 10px 4px;
+  border-radius: 8px;
+  background: var(--good);
+  color: #fff;
+  font-family: var(--display);
+  font-size: 16px;
+  animation: pop 0.5s ease-in-out infinite alternate;
+}
+
+.result-previous {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink-dim);
+}
+
+.result-breakdown {
+  width: 100%;
+  margin-bottom: 12px;
+  border-collapse: collapse;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.result-breakdown td {
+  padding: 3px 0;
+  border-bottom: 1px dashed rgba(59, 49, 86, 0.18);
+}
+
+.result-breakdown td:last-child {
+  text-align: right;
+  font-family: var(--display);
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--good);
+}
+
+.result-breakdown td.negative {
+  color: var(--bad);
+}
+
+.result-facts {
+  display: grid;
+  grid-template-columns: repeat(2, auto 1fr);
+  gap: 2px 10px;
+  margin: 0 0 16px;
+  font-size: 13px;
+}
+
+.result-facts dt {
+  color: var(--ink-dim);
+  font-weight: 700;
+}
+
+.result-facts dd {
+  margin: 0;
+  font-weight: 800;
+}
+
+@keyframes alarm-pop {
+  from {
+    transform: translateX(-50%) scale(1);
+  }
+  to {
+    transform: translateX(-50%) scale(1.08);
+  }
+}
+
+@keyframes pop {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.08);
+  }
+}
+
+@keyframes danger-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  30% {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse {
+  from {
+    opacity: 0.75;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes bob {
+  from {
+    margin-top: 0;
+  }
+  to {
+    margin-top: -6px;
+  }
+}

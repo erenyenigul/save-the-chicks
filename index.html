@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Coop Breakout</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <div id="app"></div>
+
+    <div id="hud" class="hud" hidden>
+      <div id="hud-danger" class="hud-danger" hidden></div>
+      <div id="hud-level" class="hud-level"></div>
+      <div class="hud-stats">
+        <div class="tile stat stat-saved">
+          <span class="stat-label">Saved</span><span id="hud-saved">0</span>
+        </div>
+        <div class="tile stat stat-lost">
+          <span class="stat-label">Lost</span><span id="hud-lost">0</span>
+        </div>
+        <div class="tile stat"><span class="stat-label">Following</span><span id="hud-following">0</span></div>
+        <div class="tile stat"><span class="stat-label">Left on line</span><span id="hud-remaining">0</span></div>
+        <div id="hud-captured-tile" class="tile stat stat-captured" hidden>
+          <span class="stat-label">Guards hold</span><span id="hud-captured">0</span>
+        </div>
+      </div>
+      <div class="tile hud-meters">
+        <div>
+          <span class="stat-label">Emergency stop</span>
+          <div class="meter"><div id="hud-lever-fill" class="meter-fill"></div></div>
+        </div>
+        <div>
+          <span class="stat-label">Dash</span>
+          <div class="meter"><div id="hud-dash-fill" class="meter-fill"></div></div>
+        </div>
+      </div>
+      <div id="hud-alert" class="hud-alert" hidden>SPOTTED</div>
+      <div id="hud-prompt" class="tile hud-prompt" hidden></div>
+      <div id="hud-backend" class="hud-backend"></div>
+
+      <div id="hint-dash" class="hint hint-dash" hidden>
+        <img id="hint-dash-arrow" class="hint-arrow" src="/ui/arrow-east.png" alt="" />
+        <div class="hint-key">
+          <kbd class="keycap keycap-wide">Shift</kbd>
+          <span class="hint-caption">dash</span>
+        </div>
+      </div>
+      <div id="hint-grab" class="hint hint-grab" hidden>
+        <kbd class="keycap keycap-wide">Space</kbd>
+        <span class="hint-caption">grab</span>
+      </div>
+    </div>
+
+    <div id="overlay" class="overlay">
+      <div class="tile panel">
+        <h1 id="overlay-title">Coop Breakout</h1>
+        <p id="overlay-text">
+          The factory line is running. Pull the chicks off the conveyors before they reach the
+          grinders, then lead them out through the exit arrows. Stay out of the guards' sight, and
+          don't let them touch your line of chicks.
+        </p>
+        <ul id="overlay-controls" class="controls">
+          <li><kbd class="keycap">WASD</kbd> / arrows: move</li>
+          <li><kbd class="keycap">Shift</kbd>: dash (guards can hear it)</li>
+          <li><kbd class="keycap">Space</kbd> / <kbd class="keycap">E</kbd>: grab a chick · pull the emergency stop lever</li>
+          <li><kbd class="keycap">M</kbd>: mute</li>
+        </ul>
+        <div id="overlay-body" class="overlay-body"></div>
+        <div id="overlay-actions" class="actions">
+          <button id="overlay-button" class="button-primary" type="button" disabled>Loading…</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
