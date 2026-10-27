@@ -13,6 +13,9 @@
   --good-deep: #237a40;
   --primary-deep: #1f5f9e;
   --bad: #e04848;
+  /* Corner radii matching the Kenney frames as drawn (see "Kenney frames"). */
+  --radius: 10px;
+  --radius-small: 7px;
   --display: 'Lilita One', 'Arial Rounded MT Bold', system-ui, sans-serif;
   --body: 'Nunito', system-ui, -apple-system, 'Segoe UI', sans-serif;
   font-family: var(--body);
@@ -44,7 +47,10 @@ body {
   display: none !important;
 }
 
-/* ---- Kenney frames ---- */
+/* ---- Kenney frames ----
+ * Every sprite frame is drawn at the same scale (half the "Double" sprite's
+ * size), so all frames share one corner radius. Plain-CSS pills and keys use
+ * the matching --radius tokens. */
 
 .tile {
   border-style: solid;
@@ -55,10 +61,11 @@ body {
 .keycap {
   display: inline-block;
   min-width: 32px;
-  padding: 0 4px;
-  border-style: solid;
-  border-width: 6px 6px 9px;
-  border-image: url('/ui/tile-cream.png') 24 24 32 fill / 6px 6px 9px stretch;
+  padding: 2px 8px 1px;
+  border: 2px solid #b9a988;
+  border-bottom-width: 4px;
+  border-radius: var(--radius-small);
+  background: #fbf5e8;
   color: var(--ink);
   font-family: var(--display);
   font-size: 13px;
@@ -181,7 +188,7 @@ body {
 
 .cooldown-label {
   padding: 2px 10px 3px;
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   background: rgba(47, 69, 69, 0.8);
   color: var(--ink-light);
   font-family: var(--display);
@@ -195,7 +202,7 @@ body {
   left: 50%;
   transform: translateX(-50%);
   padding: 6px 22px 8px;
-  border-radius: 12px;
+  border-radius: var(--radius);
   background: var(--bad);
   box-shadow: inset 0 -5px 0 rgba(0, 0, 0, 0.22), 0 4px 14px rgba(216, 57, 74, 0.5);
   color: var(--ink-light);
@@ -284,8 +291,7 @@ body {
 }
 
 .hint-dash.urgent .keycap {
-  background: none;
-  border-image-source: url('/ui/tile-cream.png');
+  border-color: var(--bad);
   color: var(--bad);
   animation: pop 0.35s ease-in-out infinite alternate;
 }
@@ -322,9 +328,7 @@ body {
 
 .panel {
   max-width: 480px;
-  padding: 16px 20px 12px;
-  border-width: 24px 24px 32px;
-  border-image-width: 24px 24px 32px;
+  padding: 24px 28px 20px;
 }
 
 .panel h1 {
@@ -382,6 +386,7 @@ body {
   height: 56px;
   border-image-source: url('/ui/tile-cream.png');
   color: var(--ink);
+  text-shadow: none;
   font-size: 18px;
 }
 
@@ -534,7 +539,7 @@ body {
 
 .badge-best {
   padding: 2px 10px 4px;
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   background: var(--good);
   color: #fff;
   font-family: var(--display);
