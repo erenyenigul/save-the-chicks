@@ -13,12 +13,13 @@ const WALL_CAP_COLOR = 0xa86a5a;
 const PROP_MODELS: Record<PropKind, ModelId> = {
   crate: 'crate',
   crateSmall: 'crateSmall',
-  machine: 'machine',
+  tank: 'tank',
   robotArm: 'robotArm',
   cone: 'cone',
 };
 
-const ROBOT_ARM_SCALE = 0.55;
+/** Props that need resizing to sit on a single tile. */
+const PROP_SCALES: Partial<Record<PropKind, number>> = { robotArm: 0.55, tank: 0.75 };
 const STOP_BUTTON_SCALE = 2;
 /** Height of the wall-mounted button's centre. */
 const STOP_BUTTON_HEIGHT = 0.65;
@@ -48,9 +49,11 @@ export interface StopStation {
 /** Scene objects the simulation needs to animate after the level is built. */
 export interface LevelScene {
   root: THREE.Group;
-  /** Grinders, farms and scanners, keyed by `cellKey` of their tile. */
+  /** Hoppers, grinders, farms and scanners, keyed by `cellKey` of their tile. */
   machines: ReadonlyMap<string, THREE.Object3D>;
   stopStations: readonly StopStation[];
+  /** The arrow marking on each exit tile, in `layout.exits` order. */
+  exitMarkers: readonly THREE.Object3D[];
   dispose(): void;
 }
 
@@ -85,7 +88,7 @@ export function buildLevelScene(layout: LevelLayout, assets: Assets): LevelScene
         transform.compose(position, rotation, scale).multiply(part.matrix);
         mesh.setMatrixAt(i, transform);
       });
-      mesh.castShadow = id !== 'floor' && id !== 'exitMarker';
+      mesh.castShadow = id !== 'floor';
       mesh.receiveShadow = true;
       mesh.computeBoundingSphere();
       instanced.push(mesh);
@@ -105,7 +108,9 @@ export function buildLevelScene(layout: LevelLayout, assets: Assets): LevelScene
 
   // Floor and exit markings.
   addInstanced('floor', layout.floor.map((cell) => ({ cell })));
-  addInstanced('exitMarker', layout.exits.map((cell) => ({ cell, y: 0.01, yaw: exitArrowYaw(cell, layout.grid) })));
+  const exitMarkers = layout.exits.map((cell) =>
+    addUnique('exitMarker', { cell, y: 0.01, yaw: exitArrowYaw(cell, layout.grid) }),
+  );
 
   // Walls are plain blocks; the kit's wall pieces are designed for interiors seen from eye level.
   const addBlocks = (height: number, y: number, color: number): void => {
@@ -132,7 +137,7 @@ export function buildLevelScene(layout: LevelLayout, assets: Assets): LevelScene
     placements.push({
       cell,
       yaw: kind === 'robotArm' ? 0 : propYaw(cell),
-      scale: kind === 'robotArm' ? ROBOT_ARM_SCALE : 1,
+      scale: PROP_SCALES[kind] ?? 1,
     });
     byKind.set(kind, placements);
   }
@@ -159,7 +164,7 @@ export function buildLevelScene(layout: LevelLayout, assets: Assets): LevelScene
     }
   };
   for (const belt of layout.belts) {
-    addUnique('hopper', { cell: belt.hopper });
+    machines.set(cellKey(belt.hopper), addUnique('hopper', { cell: belt.hopper }));
     addRun(belt.run);
   }
   addInstanced(
@@ -191,6 +196,7 @@ export function buildLevelScene(layout: LevelLayout, assets: Assets): LevelScene
     root,
     machines,
     stopStations,
+    exitMarkers,
     dispose() {
       root.removeFromParent();
       for (const mesh of instanced) mesh.dispose();

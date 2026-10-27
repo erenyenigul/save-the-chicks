@@ -1,7 +1,7 @@
 import { cellKey, Grid, type Cell } from './Grid';
 import type { LevelDefinition } from './levels';
 
-export type PropKind = 'crate' | 'crateSmall' | 'machine' | 'robotArm' | 'cone';
+export type PropKind = 'crate' | 'crateSmall' | 'tank' | 'robotArm' | 'cone';
 
 export interface BeltTile {
   cell: Cell;
@@ -78,10 +78,20 @@ const LINE_TILES = new Set([...Object.keys(BELT_DIRECTIONS), 'H', 'S', 'G', 'F']
 /** Minimum walking steps from any exit to a tile next to the production line. */
 export const MIN_EXIT_TO_BELT_STEPS = 12;
 
+/**
+ * Walls an emergency stop may hang on, in order of preference. The camera looks north from
+ * the south, so a button on the south wall would face away from it and is not allowed.
+ */
+const BUTTON_WALL_SIDES: readonly Cell[] = [
+  { col: 0, row: -1 },
+  { col: 1, row: 0 },
+  { col: -1, row: 0 },
+];
+
 const PROP_TILES: Record<string, PropKind> = {
   B: 'crate',
   b: 'crateSmall',
-  M: 'machine',
+  T: 'tank',
   R: 'robotArm',
   c: 'cone',
 };
@@ -151,9 +161,11 @@ export function parseLevel(definition: LevelDefinition): LevelLayout {
   }
 
   const stopButtons = stopButtonCells.map((cell) => {
-    const wallSide = Object.values(BELT_DIRECTIONS).find((side) => tileAt(cell.col + side.col, cell.row + side.row) === '#');
+    const wallSide = BUTTON_WALL_SIDES.find((side) => tileAt(cell.col + side.col, cell.row + side.row) === '#');
     if (!wallSide) {
-      throw new Error(`Level "${definition.name}": emergency stop at ${cell.col},${cell.row} must stand against a wall`);
+      throw new Error(
+        `Level "${definition.name}": emergency stop at ${cell.col},${cell.row} must stand against a north, east or west wall`,
+      );
     }
     return { cell, wallSide };
   });

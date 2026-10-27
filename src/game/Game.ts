@@ -16,6 +16,7 @@ import { Chick, type EscapeRoute } from './Chick';
 import { ChickSpawner } from './ChickSpawner';
 import { Effects } from './Effects';
 import { EmergencyStop } from './EmergencyStop';
+import { ExitGlow } from './ExitGlow';
 import { Guard, separateGuards } from './Guard';
 import { GuardEmotes } from './GuardEmotes';
 import { Player } from './Player';
@@ -87,6 +88,7 @@ export class Game {
   private readonly alarm: Alarm;
   private readonly effects: Effects;
   private readonly stopStations: StopStations;
+  private readonly exitGlow: ExitGlow;
   private readonly emotes: GuardEmotes;
 
   private saved = 0;
@@ -135,6 +137,8 @@ export class Game {
 
     this.effects = new Effects();
     this.stopStations = new StopStations(this.scene.stopStations);
+    this.exitGlow = new ExitGlow(this.layout.exits);
+    this.root.add(this.exitGlow.root);
     this.emotes = new GuardEmotes(assets, this.guards);
     this.root.add(this.effects.root, this.emotes.root);
 
@@ -164,13 +168,16 @@ export class Game {
 
   /**
    * Things the player can act on right now, for the renderer to outline:
-   * stop buttons while the emergency stop is ready, and the chick within reach.
+   * stop buttons while the emergency stop is ready, the chick within reach, and
+   * the exits while chicks are following.
    */
   highlights(): THREE.Object3D[] {
     if (this.pendingOutcome) return [];
-    const buttons = this.emergencyStop.isReady ? this.stopStations.buttons : [];
+    const highlighted = this.emergencyStop.isReady ? [...this.stopStations.buttons] : [];
     const chick = this.grabbableChick();
-    return chick ? [...buttons, chick.object] : buttons;
+    if (chick) highlighted.push(chick.object);
+    if (this.followers.length > 0) highlighted.push(...this.scene.exitMarkers);
+    return highlighted;
   }
 
   /** A chick on a belt within the player's reach, if any. */
@@ -236,6 +243,7 @@ export class Game {
     this.sound.stopLoop('hum');
     this.effects.dispose();
     this.stopStations.dispose();
+    this.exitGlow.dispose();
     this.emotes.dispose();
     for (const chick of this.chicks) chick.dispose();
     for (const guard of this.guards) guard.dispose();
@@ -269,6 +277,7 @@ export class Game {
     this.sun.follow(this.player.position);
     this.mixHum();
     this.effects.update(dt);
+    this.exitGlow.update(dt, live && this.followers.length > 0);
 
     this.updateGuards(dt, live);
     this.returns.update(
@@ -361,6 +370,30 @@ export class Game {
 
       if (live && chick.isFollowing) this.tryEscape(chick);
     }
+    if (live) this.callLineToExit();
+  }
+
+  /** With the player at the door, the whole line runs straight out instead of trailing behind. */
+  private callLineToExit(): void {
+    if (this.followers.length === 0) return;
+    const exit = this.nearestExit(this.player.position);
+    if (distanceXZ(exit.cell, this.player.position) > TUNING.chick.exitCallDistance) return;
+
+    const leaving = this.followers.filter((chick) => chick.isFollowing);
+    for (const chick of leaving) {
+      this.sendToExit(chick);
+      this.followers.splice(this.followers.indexOf(chick), 1);
+      this.saved++;
+    }
+    if (leaving.length > 0) this.sound.play('saved');
+  }
+
+  /** Sends a chick running to its nearest exit and out. Returns how far it has to run. */
+  private sendToExit(chick: Chick): number {
+    const exit = this.nearestExit(chick.position);
+    const path = this.layout.grid.findPath(chick.position, exit.cell);
+    chick.fleeTo(path, escapeRoute(exit.outward));
+    return pathLength(chick.position, path);
   }
 
   /** A chick in the player's line that reaches an exit tile is saved. */
@@ -446,6 +479,7 @@ export class Game {
     const chick = new Chick(this.assets, line, Math.random() < 0.5 ? 'male' : 'female');
     this.chicks.push(chick);
     this.root.add(chick.object);
+    line.hopperMotion.spit();
     this.sound.play('chirp', line.hopperMouth);
   }
 
@@ -474,12 +508,7 @@ export class Game {
   /** Level won: everyone still following runs for the nearest exit and counts as saved. */
   private win(): void {
     let longestRun = 0;
-    for (const chick of this.followers) {
-      const exit = this.nearestExit(chick.position);
-      const path = this.layout.grid.findPath(chick.position, exit.cell);
-      chick.fleeTo(path, escapeRoute(exit.outward));
-      longestRun = Math.max(longestRun, pathLength(chick.position, path));
-    }
+    for (const chick of this.followers) longestRun = Math.max(longestRun, this.sendToExit(chick));
     this.escapedAtEnd = this.followers.length;
     this.saved += this.escapedAtEnd;
     this.followers.length = 0;

@@ -23,7 +23,9 @@ export const TUNING = {
   chick: {
     scale: 0.34,
     beltHeight: 0.4,
-    dropDuration: 0.45,
+    dropDuration: 0.55,
+    /** How high a chick pops above the hopper mouth when spat out. */
+    spitHeight: 0.9,
     hopDuration: 0.35,
     hopHeight: 0.8,
     grindDuration: 0.35,
@@ -39,10 +41,10 @@ export const TUNING = {
     /** How quickly speed changes (damping rate). */
     acceleration: 10,
     escapeSpeed: 3,
-    /** Seconds dancing in the exit before running off. */
-    celebrateDuration: 0.5,
     /** How far out of the exit an escaping chick runs before turning down the sidewalk. */
     sidewalkStep: 1.5,
+    /** Once the player is this close to an exit, the whole line runs straight out. */
+    exitCallDistance: 3,
     /** Total seconds an escaping chick stays in the world. */
     escapeDuration: 8,
     turnRate: 12,

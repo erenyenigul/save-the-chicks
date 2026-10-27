@@ -6,7 +6,7 @@ import type { BeltLine, BeltPath, BeltSpot, Sex } from './Belt';
 import { SIDEWALK_HEIGHT } from '../world/Street';
 import { TUNING } from './tuning';
 
-type ChickClip = 'idle' | 'walk' | 'run' | 'dance' | 'gesture-negative';
+type ChickClip = 'idle' | 'walk' | 'run' | 'gesture-negative';
 
 type ChickState =
   | { kind: 'dropping'; line: BeltLine; elapsed: number }
@@ -157,7 +157,7 @@ export class Chick {
     if (this.state.kind !== 'following' && this.state.kind !== 'fleeing') return;
     this.state = { kind: 'escaping', route, start: this.position.clone(), elapsed: 0, turned: false };
     this.marker.visible = false;
-    this.animator.play('dance', { fade: 0.1 });
+    this.animator.play('run', { fade: 0.1 });
   }
 
   /** Leave the line and run along `path` to an exit, then out through it. */
@@ -185,7 +185,8 @@ export class Chick {
         const t = Math.min(state.elapsed / chick.dropDuration, 1);
         const landing = state.line.root.start;
         this.position.lerpVectors(state.line.hopperMouth, landing, t);
-        this.position.y = THREE.MathUtils.lerp(state.line.hopperMouth.y, landing.y, t * t);
+        // Spat out: pops up out of the hopper and arcs down onto the belt.
+        this.position.y = THREE.MathUtils.lerp(state.line.hopperMouth.y, landing.y, t) + Math.sin(t * Math.PI) * chick.spitHeight;
         if (t === 1) this.state = { kind: 'riding', path: state.line.root, distance: 0, pushTo: null };
         return null;
       }
@@ -278,8 +279,6 @@ export class Chick {
   private runAway(state: Extract<ChickState, { kind: 'escaping' }>, dt: number): ChickEvent | null {
     const { chick } = TUNING;
     state.elapsed += dt;
-    if (state.elapsed < chick.celebrateDuration) return null; // A little dance in the doorway first.
-    this.animator.play('run');
 
     scratch.subVectors(this.position, state.start).setY(0);
     const outwardTravel = scratch.dot(state.route.outward);

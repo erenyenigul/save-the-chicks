@@ -9,9 +9,13 @@ const HOPPER_MOUTH_HEIGHT = 1.4;
 const KICK_DURATION = 0.3;
 
 /** Rumbles a machine while the line runs and kicks it when it takes a chick. */
+/** Squash-and-stretch when a hopper spits a chick out: squashes down, then springs up taller. */
+const SPIT = { amount: 0.28, damping: 7, frequency: 16, duration: 0.7 };
+
 export class MachineMotion {
   private readonly rest: THREE.Vector3;
   private kickTimer = 0;
+  private spitTimer = Infinity;
   private time = Math.random() * 10;
 
   constructor(
@@ -25,16 +29,30 @@ export class MachineMotion {
     return this.rest;
   }
 
+  /** A quick swell, for a machine taking a chick in. */
   kick(): void {
     this.kickTimer = KICK_DURATION;
+  }
+
+  /** Squash and stretch, for a hopper spitting a chick out. */
+  spit(): void {
+    this.spitTimer = 0;
   }
 
   update(dt: number, running: boolean): void {
     this.time += dt;
     this.kickTimer = Math.max(0, this.kickTimer - dt);
+    this.spitTimer += dt;
     const shake = running ? Math.sin(this.time * 45) * this.rumble : 0;
     this.object.position.set(this.rest.x + shake, this.rest.y, this.rest.z);
-    this.object.scale.setScalar(1 + (this.kickTimer / KICK_DURATION) * 0.12);
+
+    const swell = 1 + (this.kickTimer / KICK_DURATION) * 0.12;
+    // Negative = squashed (short and wide), positive = stretched (tall and thin); volume roughly kept.
+    const stretch =
+      this.spitTimer < SPIT.duration
+        ? -SPIT.amount * Math.exp(-SPIT.damping * this.spitTimer) * Math.cos(SPIT.frequency * this.spitTimer)
+        : 0;
+    this.object.scale.set(swell * (1 - stretch / 2), swell * (1 + stretch), swell * (1 - stretch / 2));
   }
 }
 
@@ -116,6 +134,8 @@ export class BeltLine {
   constructor(
     hopper: Cell,
     readonly root: BeltPath,
+    /** The hopper itself; it rumbles while the line runs and spits each chick out. */
+    readonly hopperMotion: MachineMotion,
   ) {
     this.hopperMouth = new THREE.Vector3(hopper.col, HOPPER_MOUTH_HEIGHT, hopper.row);
   }
@@ -194,6 +214,8 @@ export function buildBeltLines(
     return new BeltPath(points, { kind: end.kind, machine: motionAt(end.cell, 0.012) });
   };
 
-  const lines = layouts.map((layout) => new BeltLine(layout.hopper, buildPath(layout.run)));
+  const lines = layouts.map(
+    (layout) => new BeltLine(layout.hopper, buildPath(layout.run), motionAt(layout.hopper, 0.006)),
+  );
   return { lines, machines };
 }
