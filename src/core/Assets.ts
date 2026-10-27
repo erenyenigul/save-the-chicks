@@ -13,7 +13,6 @@ export const MODEL_PATHS = {
   grinder: 'factory/machine-fortified.glb',
   farm: 'factory/machine-window-bar.glb',
   scanner: 'factory/scanner-high.glb',
-  machine: 'factory/machine.glb',
   crate: 'factory/box-large.glb',
   crateSmall: 'factory/box-small.glb',
   robotArm: 'factory/robot-arm-a.glb',
